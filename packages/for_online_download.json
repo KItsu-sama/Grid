@@ -1,0 +1,14 @@
+{
+    "tails": {
+        "name": "Tails",
+        "description": "Tails is a live operating system that you can start on almost any computer from a USB stick or a DVD. It aims to preserve your privacy and anonymity, and helps you to: use the Internet anonymously and circumvent censorship; all connections to the Internet are forced to go through the Tor network; leave no trace on the computer you are using unless you ask it explicitly; use state-of-the-art cryptographic tools to encrypt your files, emails and instant messaging.",
+        "url": "https://tailscale.com/download"
+    },
+    "syncthing": {
+        "name": "Syncthing",
+        "description": "Syncthing is a continuous file synchronization program. It synchronizes files between two or more computers in real time, safely protected from prying eyes. Your data is your data alone and you deserve to choose where it is stored, if it is shared with some third party and how it's transmitted over the Internet.",
+        "url": "https://github.com/GermanCoding/SyncTrayzor/releases/tag/v2.2.0",
+        "id": "sha256:2ed9cc53ac83c287e069f8dcfa3ac801daf7d2ac76c93457021f712ff6785662"
+    }
+
+}

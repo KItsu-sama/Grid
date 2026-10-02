@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "defaultMode": "persistent",
+  "is_root": false,
+  "persistent": {
+    "targetDrive": "AUTO",
+    "targetPath": "",
+    "targetFolder": "PersonalGrid",
+    "minimumFreeBytes": 10737418240,
+    "autostart": true
+  },
+  "device": {
+    "name": "",
+    "role": "development",
+    "isMain": false
+  },
+  "tailscale": {
+    "enabled": true,
+    "authenticateInteractively": true
+  },
+  "syncthing": {
+    "enabled": true,
+    "rootFolder": "ZinoSync",
+    "peerApprovalRequired": true,
+    "guiAddress": "127.0.0.1:8384",
+    "folders": [
+      {
+        "id": "grid-inbox",
+        "name": "Inbox",
+        "enabled": true,
+        "type": "sendreceive"
+      },
+      {
+        "id": "grid-camera",
+        "name": "Camera",
+        "enabled": true,
+        "type": "sendreceive"
+      },
+      {
+        "id": "grid-documents",
+        "name": "Documents",
+        "enabled": true,
+        "type": "sendreceive"
+      },
+      {
+        "id": "grid-projects",
+        "name": "Projects",
+        "enabled": true,
+        "type": "sendreceive"
+      },
+      {
+        "id": "grid-secondbrain",
+        "name": "SecondBrain",
+        "enabled": true,
+        "type": "sendreceive"
+      },
+      {
+        "id": "grid-offline",
+        "name": "Offline",
+        "enabled": true,
+        "type": "sendreceive"
+      }
+    ]
+  }
+}

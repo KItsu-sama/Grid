@@ -1,0 +1,23 @@
+# Generated machine-specific Grid config and state
+config/grid.json
+config/syncconfig.json
+config/secret.json
+tailscale.txt
+.grid/
+state/
+
+# Secrets and credentials
+.env
+.env.*
+*.authkey
+*.secret.json
+
+# Local logs and temporary files
+logs/
+*.log
+*.tmp
+
+# Vendor packages copied onto the USB (keep README + manifest)
+packages/*.exe
+packages/*.zip
+packages/*.msi

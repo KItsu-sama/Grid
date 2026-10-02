@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "gridName": "PersonalGrid",
+  "seedDevice": {
+    "name": "",
+    "deviceId": ""
+  },
+  "folders": [
+    {
+      "id": "grid-inbox",
+      "name": "Inbox"
+    },
+    {
+      "id": "grid-camera",
+      "name": "Camera"
+    },
+    {
+      "id": "grid-documents",
+      "name": "Documents"
+    },
+    {
+      "id": "grid-projects",
+      "name": "Projects"
+    },
+    {
+      "id": "grid-secondbrain",
+      "name": "SecondBrain"
+    },
+    {
+      "id": "grid-offline",
+      "name": "Offline"
+    }
+  ]
+}
