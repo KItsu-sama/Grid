@@ -15,6 +15,38 @@ function New-GridCheck {
     }
 }
 
+function Get-GridFolderSyncIssue {
+    param($Status)
+    if ($null -eq $Status) { return 'folder status unavailable' }
+
+    $state = [string](Get-GridProperty $Status 'state')
+    $need = Get-GridProperty $Status 'needTotalItems'
+    $pullErrors = Get-GridProperty $Status 'pullErrors'
+    if ([string]::IsNullOrWhiteSpace($state) -or $null -eq $need -or $null -eq $pullErrors) {
+        return 'folder status response is missing state, needTotalItems, or pullErrors'
+    }
+
+    if ($state -ne 'idle' -or [long]$need -ne 0 -or [long]$pullErrors -ne 0) {
+        return "state=$state needTotalItems=$need pullErrors=$pullErrors"
+    }
+    return $null
+}
+
+function Get-GridFolderSharingIssue {
+    param($FolderConfig, [string[]]$ConnectedPeerIds)
+    if ($null -eq $FolderConfig) { return 'folder is not configured in Syncthing' }
+    if (@($ConnectedPeerIds).Count -eq 0) { return 'no connected peer to verify folder sharing against' }
+
+    $folderPeerIds = @(
+        (Get-GridProperty $FolderConfig 'devices' @()) |
+            ForEach-Object { [string](Get-GridProperty $_ 'deviceID') }
+    )
+    foreach ($peerId in $ConnectedPeerIds) {
+        if ($folderPeerIds -contains $peerId) { return $null }
+    }
+    return 'folder is not shared with a connected peer'
+}
+
 function Invoke-GridAudit {
     param([Parameter(Mandatory = $true)]$Context)
     $checks = New-Object System.Collections.Generic.List[object]
@@ -53,6 +85,8 @@ function Invoke-GridAudit {
     $myId = $null
     $peerConfigured = $false
     $peerConnected = $false
+    $connectedPeerIds = @()
+    $syncthingConfig = $null
     $peerReason = 'peer not evaluated'
     $folderSyncOk = $false
     $folderSyncReason = 'folder sync not evaluated'
@@ -70,8 +104,8 @@ function Invoke-GridAudit {
                 $seedId = [string]$manifest.seedDevice.deviceId
                 $isMain = ($seedId -eq $myId)
                 if ($isMain) {
-                    $cfg = Get-GridSyncthingConfig -Context $Context
-                    $others = @($cfg.devices | Where-Object { [string]$_.deviceID -ne $myId })
+                    $syncthingConfig = Get-GridSyncthingConfig -Context $Context
+                    $others = @($syncthingConfig.devices | Where-Object { [string]$_.deviceID -ne $myId })
                     if ($others.Count -eq 0) {
                         $peerConfigured = $false
                         $peerConnected = $false
@@ -79,37 +113,45 @@ function Invoke-GridAudit {
                     } else {
                         $peerConfigured = $true
                         $conn = Invoke-GridSyncthingApi -Context $Context -Method GET -Path '/rest/system/connections'
-                        $any = $false
                         foreach ($d in $others) {
                             $p = Get-GridProperty $conn.connections ([string]$d.deviceID)
-                            if ([bool](Get-GridProperty $p 'connected' $false)) { $any = $true }
+                            if ([bool](Get-GridProperty $p 'connected' $false)) { $connectedPeerIds += [string]$d.deviceID }
                         }
-                        $peerConnected = $any
-                        $peerReason = $(if ($any) { 'at least one configured peer is connected' } else { 'configured peer(s) not connected' })
+                        $peerConnected = ($connectedPeerIds.Count -gt 0)
+                        $peerReason = $(if ($peerConnected) { 'at least one configured peer is connected' } else { 'configured peer(s) not connected' })
                     }
                 } else {
                     $peerConfigured = -not [string]::IsNullOrWhiteSpace($seedId)
                     $conn = Invoke-GridSyncthingApi -Context $Context -Method GET -Path '/rest/system/connections'
                     $p = Get-GridProperty $conn.connections $seedId
                     $peerConnected = [bool](Get-GridProperty $p 'connected' $false)
+                    if ($peerConnected) { $connectedPeerIds += $seedId }
                     $peerReason = $(if ($peerConnected) { "connected to seed $seedId" } else { "seed $seedId not connected; approve this device ID on the seed" })
                 }
             } else {
                 $peerReason = 'seed manifest missing'
             }
-            try {
-                $sg = Invoke-GridSyncthingApi -Context $Context -Method GET -Path '/rest/stats/folder'
-                $bad = @()
-                foreach ($folder in Get-GridEnabledFolders -Context $Context) {
-                    $id = [string]$folder.id
-                    $entry = Get-GridProperty $sg $id
-                    if ($null -eq $entry) { $bad += "$id (not in stats)" }
+            $bad = @()
+            if ($null -eq $syncthingConfig) { $syncthingConfig = Get-GridSyncthingConfig -Context $Context }
+            foreach ($folder in Get-GridEnabledFolders -Context $Context) {
+                $id = [string]$folder.id
+                try {
+                    $configuredFolder = @($syncthingConfig.folders | Where-Object { [string]$_.id -eq $id }) | Select-Object -First 1
+                    $sharingIssue = Get-GridFolderSharingIssue -FolderConfig $configuredFolder -ConnectedPeerIds $connectedPeerIds
+                    if ($null -ne $sharingIssue) {
+                        $bad += "$id ($sharingIssue)"
+                        continue
+                    }
+                    $encodedId = [System.Uri]::EscapeDataString($id)
+                    $folderStatus = Invoke-GridSyncthingApi -Context $Context -Method GET -Path "/rest/db/status?folder=$encodedId"
+                    $issue = Get-GridFolderSyncIssue -Status $folderStatus
+                    if ($null -ne $issue) { $bad += "$id ($issue)" }
+                } catch {
+                    $bad += "$id ($($_.Exception.Message))"
                 }
-                $folderSyncOk = ($bad.Count -eq 0)
-                $folderSyncReason = $(if ($folderSyncOk) { 'folder IDs present in Syncthing stats' } else { ($bad -join ', ') })
-            } catch {
-                $folderSyncReason = $_.Exception.Message
             }
+            $folderSyncOk = ($bad.Count -eq 0)
+            $folderSyncReason = $(if ($folderSyncOk) { 'all enabled folders are idle, complete, and have no pull errors' } else { ($bad -join ', ') })
         }
     } catch {
         $apiOk = $false
@@ -136,9 +178,9 @@ function Invoke-GridAudit {
         overall       = $overall
         setupComplete = $setupComplete
         gridOnline    = $gridOnline
-        checks        = @($checks)
-        failedSetup   = $failedSetup
-        failedOnline  = $failedOnline
+        checks        = @($checks.ToArray())
+        failedSetup   = @($failedSetup)
+        failedOnline  = @($failedOnline)
         deviceId      = $myId
         isMain        = $isMain
         gridRoot      = $Context.GridRoot

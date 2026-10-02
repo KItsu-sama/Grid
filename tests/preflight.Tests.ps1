@@ -75,4 +75,22 @@ Describe 'Setup preflight' {
         $check.status | Should Be 'blocker'
         (Test-Path -LiteralPath (Join-Path $context.GridRoot 'packages')) | Should Be $false
     }
+
+    It 'prints blockers only and reports a clear empty result when ready' {
+        $report = [pscustomobject]@{
+            overall = 'blocked'
+            checks = @(
+                [pscustomobject]@{ status = 'blocker'; name = 'Pairing'; reason = 'Seed manifest missing' }
+                [pscustomobject]@{ status = 'action'; name = 'Sign-in'; reason = 'Interactive sign-in may be needed' }
+            )
+        }
+        $output = (Write-GridPreflightReport -Report $report 6>&1 | Out-String)
+        $output | Should Match '\[BLOCKER\] Pairing: Seed manifest missing'
+        $output | Should Not Match 'Interactive sign-in'
+
+        $report.overall = 'ready'
+        $report.checks = @([pscustomobject]@{ status = 'ready'; name = 'Windows'; reason = 'Detected' })
+        $output = (Write-GridPreflightReport -Report $report 6>&1 | Out-String)
+        $output | Should Match 'No blockers found'
+    }
 }

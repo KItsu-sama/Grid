@@ -139,8 +139,10 @@ function Get-GridPreflightReport {
 function Write-GridPreflightReport {
     param([Parameter(Mandatory = $true)]$Report)
     Write-Host 'Personal Grid setup preflight'
-    foreach ($check in $Report.checks) {
-        Write-Host "[$($check.status.ToUpperInvariant())] $($check.name): $($check.reason)"
+    $blockers = @($Report.checks | Where-Object { $_.status -eq 'blocker' })
+    foreach ($check in $blockers) {
+        Write-Host "[BLOCKER] $($check.name): $($check.reason)"
     }
+    if ($blockers.Count -eq 0) { Write-Host 'No blockers found.' }
     Write-Host "Overall: $($Report.overall.ToUpperInvariant())"
 }

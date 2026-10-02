@@ -26,7 +26,7 @@ powershell -ExecutionPolicy Bypass -File .\Grid.ps1 setup -Seed
 
 | Command | Behavior |
 | --- | --- |
-| `preflight` | Report required inputs and blockers without installing, starting services, or opening sign-in |
+| `preflight` | Report blockers only (or `No blockers found`); never installs, starts services, or opens sign-in |
 | `setup` | Load → detect → persistent GridRoot → prepare → Tailscale → Syncthing identity → configure/pair → startup → audit |
 | `start` | Reuse saved identity; start Tailscale service if needed; start Syncthing with `--home` under GridRoot |
 | `stop` | Stop this node's Syncthing only (does not log out Tailscale) |
