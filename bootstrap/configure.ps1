@@ -372,7 +372,8 @@ function Wait-GridPeerConnection {
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         try {
-            $conn = Invoke-GridSyncthingApi -Context $Context -Method GET -Path '/rest/system/connections'
+            $remaining = [Math]::Max(1, [Math]::Min(5, [Math]::Ceiling(($deadline - [DateTime]::UtcNow).TotalSeconds)))
+            $conn = Invoke-GridSyncthingApi -Context $Context -Method GET -Path '/rest/system/connections' -TimeoutSec $remaining -RetryCount 0
             $connections = Get-GridProperty $conn 'connections'
             if ($null -ne $connections) {
                 $peer = Get-GridProperty $connections $PeerId

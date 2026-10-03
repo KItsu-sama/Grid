@@ -42,13 +42,34 @@ function Write-GridJsonAtomic {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
     $json = ConvertTo-GridJson -InputObject $InputObject
-    $temp = "$Path.tmp"
+    $suffix = [guid]::NewGuid().ToString('N')
+    $temp = "$Path.$suffix.tmp"
+    $backup = "$Path.$suffix.bak"
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-    [System.IO.File]::WriteAllText($temp, $json, $utf8NoBom)
-    if (Test-Path -LiteralPath $Path) {
-        Move-Item -LiteralPath $temp -Destination $Path -Force
-    } else {
-        Move-Item -LiteralPath $temp -Destination $Path
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open($temp, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        $bytes = $utf8NoBom.GetBytes($json)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+        $stream.Dispose()
+        $stream = $null
+        if ([System.IO.File]::Exists($Path)) {
+            [System.IO.File]::Replace($temp, $Path, $backup)
+            if (Test-Path -LiteralPath $backup) {
+                Remove-Item -LiteralPath $backup -Force
+            }
+        } else {
+            [System.IO.File]::Move($temp, $Path)
+        }
+    } finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+        if (Test-Path -LiteralPath $temp) {
+            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath $backup) {
+            Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 

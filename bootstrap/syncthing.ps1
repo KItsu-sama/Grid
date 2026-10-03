@@ -63,7 +63,9 @@ function Invoke-GridSyncthingApi {
         [Parameter(Mandatory = $true)]$Context,
         [Parameter(Mandatory = $true)][string]$Method,
         [Parameter(Mandatory = $true)][string]$Path,
-        $Body
+        $Body,
+        [ValidateRange(1, 60)][int]$TimeoutSec = 15,
+        [ValidateRange(0, 3)][int]$RetryCount = 1
     )
     $apiKey = Get-GridSyncthingApiKey -Context $Context
     if ([string]::IsNullOrWhiteSpace($apiKey)) {
@@ -76,13 +78,23 @@ function Invoke-GridSyncthingApi {
         Method          = $Method
         Headers         = $headers
         UseBasicParsing = $true
-        TimeoutSec      = 15
+        TimeoutSec      = $TimeoutSec
     }
     if ($null -ne $Body) {
         $params.ContentType = 'application/json'
         $params.Body = (ConvertTo-GridJson -InputObject $Body)
     }
-    $resp = Invoke-WebRequest @params
+    $resp = $null
+    for ($attempt = 0; $attempt -le $RetryCount; $attempt++) {
+        try {
+            $resp = Invoke-WebRequest @params
+            break
+        } catch {
+            $hasHttpResponse = $null -ne $_.Exception.Response
+            if ($Method -ne 'GET' -or $hasHttpResponse -or $attempt -ge $RetryCount) { throw }
+            Start-Sleep -Milliseconds ([Math]::Min(500, 100 * [Math]::Pow(2, $attempt)))
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($resp.Content)) { return $null }
     try {
         return ($resp.Content | ConvertFrom-Json)
@@ -99,7 +111,8 @@ function Wait-GridSyncthingReady {
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         try {
-            $status = Invoke-GridSyncthingApi -Context $Context -Method GET -Path '/rest/system/status'
+            $remaining = [Math]::Max(1, [Math]::Min(3, [Math]::Ceiling(($deadline - [DateTime]::UtcNow).TotalSeconds)))
+            $status = Invoke-GridSyncthingApi -Context $Context -Method GET -Path '/rest/system/status' -TimeoutSec $remaining -RetryCount 0
             if ($null -ne $status -and -not [string]::IsNullOrWhiteSpace([string](Get-GridProperty $status 'myID'))) {
                 return $status
             }
@@ -138,10 +151,26 @@ function Start-GridSyncthing {
 }
 
 function Stop-GridSyncthing {
-    param([Parameter(Mandatory = $true)]$Context)
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [ValidateRange(0, 60)][int]$GraceSeconds = 10
+    )
     $owned = @(Get-GridSyncthingProcess -GridHome $Context.SyncthingHome)
     foreach ($p in $owned) {
-        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+        try {
+            Invoke-GridSyncthingApi -Context $Context -Method POST -Path '/rest/system/shutdown' | Out-Null
+        } catch {
+            Write-GridLog -Level WARN -Context $Context -Message "Syncthing graceful shutdown request failed for PID $($p.Id); waiting before forced stop."
+        }
+        $deadline = [DateTime]::UtcNow.AddSeconds($GraceSeconds)
+        while ([DateTime]::UtcNow -lt $deadline) {
+            if ($null -eq (Get-Process -Id $p.Id -ErrorAction SilentlyContinue)) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($null -ne (Get-Process -Id $p.Id -ErrorAction SilentlyContinue)) {
+            Write-GridLog -Level WARN -Context $Context -Message "Syncthing PID $($p.Id) did not exit within ${GraceSeconds}s; forcing stop."
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 

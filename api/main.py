@@ -7,12 +7,62 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 START_TIME = time.time()
+MAX_REQUEST_BODY_BYTES = 16 * 1024
 app = FastAPI(title="Personal Grid API")
+
+
+class RequestBodyTooLarge(Exception):
+    pass
+
+
+class RequestBodyLimitMiddleware:
+    def __init__(self, app: Any, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        content_length = next(
+            (value for name, value in scope.get("headers", []) if name.lower() == b"content-length"),
+            None,
+        )
+        if content_length is not None:
+            try:
+                if int(content_length) > self.max_bytes:
+                    response = JSONResponse({"detail": "request body too large"}, status_code=413)
+                    await response(scope, receive, send)
+                    return
+            except ValueError:
+                pass
+
+        received_bytes = 0
+
+        async def limited_receive() -> dict[str, Any]:
+            nonlocal received_bytes
+            message = await receive()
+            if message["type"] == "http.request":
+                received_bytes += len(message.get("body", b""))
+                if received_bytes > self.max_bytes:
+                    raise RequestBodyTooLarge
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except RequestBodyTooLarge:
+            response = JSONResponse({"detail": "request body too large"}, status_code=413)
+            await response(scope, receive, send)
+
+
+app.add_middleware(RequestBodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -59,7 +109,7 @@ def load_role() -> dict[str, Any]:
 
 
 class AskRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=8192)
 
 
 class AskResponse(BaseModel):

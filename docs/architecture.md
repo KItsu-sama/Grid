@@ -34,6 +34,8 @@ Modules must not hardcode `D:\PersonalGrid`. They receive a context with `Mode`,
 
 `config.xml` stays in `.grid\syncthing`. It is never copied into Git or into `syncconfig.json`.
 
+Grid JSON state is written through a unique same-directory temporary file, flushed to disk, and atomically replaced. This prevents partial files and temp-name collisions; concurrent stale writers are still last-writer-wins.
+
 The optional phone-facing API is under `api\`. It reads the active role from
 `<GridRoot>\.grid\device.json` when `PERSONAL_GRID_ROOT` is set, falling back
 to `config\grid.json`. The bootstrap does not start this service.

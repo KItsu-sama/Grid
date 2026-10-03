@@ -23,7 +23,8 @@ Describe 'Install state' {
         $state = New-GridInstallState
         Set-GridStageStatus -Context $ctx -State $state -Name 'prepare' -Status completed
         Test-Path -LiteralPath $ctx.StatePath | Should Be $true
-        Test-Path -LiteralPath ($ctx.StatePath + '.tmp') | Should Be $false
+        @(Get-ChildItem -LiteralPath (Split-Path -Parent $ctx.StatePath) -Filter 'install-state.json.*.tmp').Count | Should Be 0
+        @(Get-ChildItem -LiteralPath (Split-Path -Parent $ctx.StatePath) -Filter 'install-state.json.*.bak').Count | Should Be 0
         $loaded = Read-GridInstallState -Context $ctx
         Test-GridStageCompleted -State $loaded -Name 'prepare' | Should Be $true
         Test-GridStageCompleted -State $loaded -Name 'tailscale' | Should Be $false

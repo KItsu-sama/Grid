@@ -24,5 +24,7 @@ GET  /health
 POST /ask  {"message":"hi"}
 ```
 
-`/ask` is intentionally a stub until a local model is selected. Remote
-command execution and public API exposure are not part of this service.
+`/ask` is intentionally a stub until a local model is selected. Messages must
+contain between 1 and 8,192 characters; larger messages are rejected during
+validation, and all request bodies are limited to 16 KiB. Remote command
+execution and public API exposure are not part of this service.

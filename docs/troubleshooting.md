@@ -26,6 +26,8 @@ Setup uses the existing client and service. It will not disconnect an existing t
 
 Identity lives in `<GridRoot>\.grid\syncthing`. Deleting that folder creates a new device and requires pairing again. `repair` and rerun `setup` keep an existing cert/key pair.
 
+Syncthing readiness/peer polls bound each REST request by the remaining deadline. A dropped read-only GET may be retried once; config writes are not retried automatically. `stop` requests Syncthing's graceful shutdown and waits up to 10 seconds before force-stopping a process that remains alive.
+
 ## PERSONAL GRID ONLINE not printed
 
 That line is reserved for a passing audit: Tailscale connected, Syncthing API up, identity present, folders present, required peer configured **and** connected, and folder sync complete. Initial `scanning` or `syncing` states are reported as **pending**, not failed. A configured node with an offline peer is **degraded**, not a failed install. Saved state is kept. `status` and `audit` do not start a stopped Syncthing process.
