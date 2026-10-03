@@ -72,3 +72,233 @@ Invoke-Pester .\tests
 ```
 
 Tests use Pester 3.4-compatible assertions (`Should Be`) so they run on a stock Windows PowerShell module install.
+
+## Common Commands
+
+Run these commands from the Grid repository directory in **PowerShell**.
+
+> For initial installation and operations that modify Windows services or system components, use **PowerShell as Administrator**.
+
+### Check Before Installing
+
+Run a preflight check without making changes:
+
+```powershell
+.\Grid.ps1 preflight -Seed
+```
+
+This checks whether the machine is ready for Grid setup and reports blockers without installing or changing the system.
+
+---
+
+### Install Grid
+
+Install Grid as the main/seed node:
+
+```powershell
+.\Grid.ps1 setup -Seed
+```
+
+Install Grid as a normal node:
+
+```powershell
+.\Grid.ps1 setup
+```
+
+Persistent installation with a specific location:
+
+```powershell
+.\Grid.ps1 setup -Mode persistent -TargetPath "D:\PersonalGrid"
+```
+
+Temporary mode:
+
+```powershell
+.\Grid.ps1 setup -Mode temporary
+```
+
+For the first installation, use the normal interactive mode so that required authentication and pairing steps can be completed manually.
+
+---
+
+### Start / Stop Grid
+
+Start Grid services:
+
+```powershell
+.\Grid.ps1 start
+```
+
+Stop Grid services:
+
+```powershell
+.\Grid.ps1 stop
+```
+
+Stopping Grid does **not** log the machine out of Tailscale.
+
+---
+
+### Check Grid Status
+
+Show the current Grid state:
+
+```powershell
+.\Grid.ps1 status
+```
+
+Run a more complete health check:
+
+```powershell
+.\Grid.ps1 audit
+```
+
+Use `audit` when troubleshooting or verifying that the Grid is actually online.
+
+---
+
+### Syncthing Pairing
+
+Show or obtain the local Syncthing device ID using the status/setup output, then approve another device explicitly:
+
+```powershell
+.\Grid.ps1 approve-peer -PeerId "<DEVICE_ID>" -PeerName "Laptop"
+```
+
+Example:
+
+```powershell
+.\Grid.ps1 approve-peer -PeerId "ABC1234-..." -PeerName "My-Laptop"
+```
+
+Only approve devices that you recognize.
+
+---
+
+### Repair
+
+Attempt to repair a previously installed Grid:
+
+```powershell
+.\Grid.ps1 repair
+```
+
+Use this when Grid was previously installed but a component is no longer working correctly.
+
+---
+
+### Uninstall
+
+Remove the Grid installation:
+
+```powershell
+.\Grid.ps1 uninstall
+```
+
+Remove the Grid installation and its runtime data:
+
+```powershell
+.\Grid.ps1 uninstall -RemoveData
+```
+
+Use `-RemoveData` carefully because it removes Grid-managed runtime data.
+
+---
+
+### Non-Interactive Mode
+
+For automation or scripted deployment:
+
+```powershell
+.\Grid.ps1 setup -NonInteractive
+```
+
+Non-interactive mode should only be used when all required configuration and authentication prerequisites are already available.
+
+---
+
+### Typical First-Time Setup
+
+For a new Windows machine, the recommended sequence is:
+
+```powershell
+# 1. Check the machine
+.\Grid.ps1 preflight -Seed
+
+# 2. Install and configure Grid
+.\Grid.ps1 setup -Seed
+
+# 3. Start Grid if it is not already running
+.\Grid.ps1 start
+
+# 4. Check the result
+.\Grid.ps1 status
+
+# 5. Run the full health check
+.\Grid.ps1 audit
+```
+
+If Syncthing requires another device to be approved:
+
+```powershell
+.\Grid.ps1 approve-peer -PeerId "<DEVICE_ID>" -PeerName "<DEVICE_NAME>"
+```
+
+Then run:
+
+```powershell
+.\Grid.ps1 audit
+```
+
+A successful installation should end with Grid reporting a healthy/online state.
+
+---
+
+### Troubleshooting Sequence
+
+If something is not working, start with:
+
+```powershell
+.\Grid.ps1 status
+```
+
+Then:
+
+```powershell
+.\Grid.ps1 audit
+```
+
+If the installation itself is broken:
+
+```powershell
+.\Grid.ps1 repair
+```
+
+For a completely fresh installation, uninstall first:
+
+```powershell
+.\Grid.ps1 uninstall
+```
+
+Then run:
+
+```powershell
+.\Grid.ps1 preflight -Seed
+.\Grid.ps1 setup -Seed
+```
+
+### Command Summary
+
+| Command                 | Purpose                                         |
+| ----------------------- | ----------------------------------------------- |
+| `preflight`             | Check prerequisites without changing the system |
+| `setup`                 | Install/configure Grid                          |
+| `start`                 | Start Grid services                             |
+| `stop`                  | Stop Grid services                              |
+| `status`                | Show current Grid state                         |
+| `audit`                 | Perform a complete health check                 |
+| `approve-peer`          | Explicitly approve a Syncthing device           |
+| `repair`                | Repair an existing installation                 |
+| `uninstall`             | Remove Grid                                     |
+| `uninstall -RemoveData` | Remove Grid and its runtime data                |
+
