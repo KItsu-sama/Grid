@@ -6,6 +6,8 @@ For the complete map of setup files and prerequisites, see [setup inputs](setup-
 
 ## First (seed) node
 
+Before setup, set `can_be_main: true` in the trusted seed's local `config/grid.json`. Leave `is_root: false` for a fresh install; `is_root` controls local reset behavior, not authority.
+
 1. Copy vendor packages into `packages\` and fill SHA-256 values in `packages\manifest.json`.
 2. From the USB: `.\Grid.ps1 setup -Seed`
 3. Complete Tailscale sign-in if prompted. Setup will not log you out of an existing tailnet.
@@ -34,3 +36,5 @@ For the complete map of setup files and prerequisites, see [setup inputs](setup-
 - Auto-accept every device that knows the seed ID
 - Trust a device ID as an authorization token
 - Expose the Syncthing GUI on the tailnet
+
+Nodes with `can_be_main: false` cannot seed or approve peers. Their manifest folders are configured `sendonly`: local edits are submitted to peers, while remote changes are not applied locally. This is not a content sandbox; a peer can still submit edits or deletions to shared files on the main. Do not share authoritative data with a device you do not trust to edit it.

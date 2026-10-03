@@ -37,6 +37,7 @@ Describe 'Syncthing configuration' {
         $result.folders.Count | Should Be 1
         $result.folders[0].id | Should Be 'shared-id'
         $result.folders[0].label | Should Be 'Shared'
+        $result.folders[0].type | Should Be 'sendonly'
         $result.folders[0].maxConflicts | Should Be 10
         (Test-Path -LiteralPath (Join-Path (Get-GridSyncRoot -Context $context) 'Shared')) | Should Be $true
         Assert-MockCalled Invoke-GridSyncthingApi -Times 1 -ParameterFilter { $Path -eq '/rest/config/defaults/folder' }
@@ -44,6 +45,7 @@ Describe 'Syncthing configuration' {
 
     It 'approves the named peer and shares only manifest folders on the seed' {
         $context = New-TestConfigureContext -Name 'approve-peer'
+        $context.CanBeMain = $true
         $script:testSeedId = 'AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA'
         $script:testPeerId = 'BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB'
         $manifest = [pscustomobject]@{
@@ -67,5 +69,71 @@ Describe 'Syncthing configuration' {
         @($script:savedSyncthingConfig.devices | Where-Object { $_.deviceID -eq $script:testPeerId }).Count | Should Be 1
         @($script:savedSyncthingConfig.folders[0].devices | Where-Object { $_.deviceID -eq $script:testPeerId }).Count | Should Be 1
         $script:savedSyncthingConfig.devices[0].autoAcceptFolders | Should Be $false
+    }
+
+    It 'refuses peer approval when can_be_main is false' {
+        $context = New-TestConfigureContext -Name 'unauthorized-approval'
+        $manifest = [pscustomobject]@{
+            schemaVersion = 1
+            seedDevice = [pscustomobject]@{ name = 'Seed'; deviceId = 'SEED-ID' }
+            folders = @([pscustomobject]@{ id = 'shared-id'; name = 'Shared'; type = 'sendreceive' })
+        }
+        Write-GridJsonAtomic -Path $context.SyncConfigPath -InputObject $manifest
+        { Add-GridSyncthingPeer -Context $context -PeerId 'BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB' -PeerName 'Laptop' } | Should Throw 'can_be_main is false'
+    }
+
+    It 'preserves previously approved seed peers during folder repair' {
+        $context = New-TestConfigureContext -Name 'repair-seed-shares'
+        $context.CanBeMain = $true
+        $seedId = 'LOCAL-ID'
+        $peerId = 'BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB'
+        $manifest = [pscustomobject]@{
+            schemaVersion = 1
+            seedDevice = [pscustomobject]@{ name = 'Seed'; deviceId = $seedId }
+            folders = @([pscustomobject]@{ id = 'shared-id'; name = 'Shared'; type = 'sendreceive' })
+        }
+        $existingFolder = [pscustomobject]@{
+            id = 'shared-id'
+            path = ''
+            label = ''
+            type = 'sendreceive'
+            paused = $false
+            devices = @([pscustomobject]@{ deviceID = $seedId }, [pscustomobject]@{ deviceID = $peerId })
+        }
+        $config = [pscustomobject]@{ folders = @($existingFolder) }
+
+        $result = Set-GridSyncthingFolders -Context $context -Config $config -Manifest $manifest -LocalId $seedId
+
+        @($result.folders[0].devices | Where-Object { $_.deviceID -eq $peerId }).Count | Should Be 1
+        $result.folders[0].type | Should Be 'sendreceive'
+    }
+
+    It 'does not broaden peer shares between seed folders during repair' {
+        $context = New-TestConfigureContext -Name 'repair-folder-acls'
+        $context.CanBeMain = $true
+        $seedId = 'LOCAL-ID'
+        $peerA = 'BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB'
+        $peerB = 'CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC'
+        $manifest = [pscustomobject]@{
+            schemaVersion = 1
+            seedDevice = [pscustomobject]@{ name = 'Seed'; deviceId = $seedId }
+            folders = @(
+                [pscustomobject]@{ id = 'folder-a'; name = 'FolderA'; type = 'sendreceive' },
+                [pscustomobject]@{ id = 'folder-b'; name = 'FolderB'; type = 'sendreceive' }
+            )
+        }
+        $config = [pscustomobject]@{
+            folders = @(
+                [pscustomobject]@{ id = 'folder-a'; path = ''; label = ''; type = 'sendreceive'; paused = $false; devices = @([pscustomobject]@{ deviceID = $seedId }, [pscustomobject]@{ deviceID = $peerA }) },
+                [pscustomobject]@{ id = 'folder-b'; path = ''; label = ''; type = 'sendreceive'; paused = $false; devices = @([pscustomobject]@{ deviceID = $seedId }, [pscustomobject]@{ deviceID = $peerB }) }
+            )
+        }
+
+        $result = Set-GridSyncthingFolders -Context $context -Config $config -Manifest $manifest -LocalId $seedId
+
+        @($result.folders[0].devices | Where-Object { $_.deviceID -eq $peerA }).Count | Should Be 1
+        @($result.folders[0].devices | Where-Object { $_.deviceID -eq $peerB }).Count | Should Be 0
+        @($result.folders[1].devices | Where-Object { $_.deviceID -eq $peerB }).Count | Should Be 1
+        @($result.folders[1].devices | Where-Object { $_.deviceID -eq $peerA }).Count | Should Be 0
     }
 }

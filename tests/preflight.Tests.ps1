@@ -17,6 +17,7 @@ function New-TestPreflightContext {
     Copy-Item -LiteralPath (Join-Path $root 'config\grid.example.json') -Destination (Join-Path $bootstrapRoot 'config\grid.example.json') -Force
     Copy-Item -LiteralPath (Join-Path $root 'packages\manifest.json') -Destination (Join-Path $bootstrapRoot 'packages\manifest.json') -Force
     $context = New-GridContext -LauncherRoot $bootstrapRoot -Command 'preflight' -Seed:$Seed
+    $context.CanBeMain = $Seed
     $context.Settings.tailscale.enabled = $false
     $context.Settings.syncthing.enabled = $false
     $context | Add-Member -NotePropertyName Environment -NotePropertyValue ([pscustomobject]@{
@@ -43,6 +44,14 @@ Describe 'Setup preflight' {
         ($report.checks | Where-Object { $_.name -eq 'Pairing data' }).status | Should Be 'ready'
         ($report.checks | Where-Object { $_.name -eq 'Tailscale email metadata' }).status | Should Be 'optional'
         (Test-Path -LiteralPath $context.GridRoot) | Should Be $false
+    }
+
+    It 'blocks seed setup unless can_be_main is explicitly enabled' {
+        $context = New-TestPreflightContext -Seed:$true
+        $context.CanBeMain = $false
+        $report = Get-GridPreflightReport -Context $context
+        $report.overall | Should Be 'blocked'
+        @($report.checks | Where-Object { $_.name -eq 'Main-device permission' -and $_.status -eq 'blocker' }).Count | Should Be 1
     }
 
     It 'aggregates storage, installer, and secondary-node blockers' {

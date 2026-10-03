@@ -180,7 +180,7 @@ function Resolve-GridSyncManifest {
         Write-GridJsonAtomic -Path $Context.SyncConfigPath -InputObject $manifest
         return $manifest
     }
-    if ($Context.IsRoot -or $Context.SeedRequested -or [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)) {
+    if ($Context.SeedRequested -or [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)) {
         return (New-GridSyncManifest -Context $Context -DeviceId $DeviceId)
     }
     if ($Context.NonInteractive) {
@@ -314,24 +314,36 @@ function Set-GridSyncthingFolders {
         $folders = @($Config.folders)
     }
     $seedId = [string]$Manifest.seedDevice.deviceId
-    $shareWith = @($LocalId)
-    if (-not [string]::IsNullOrWhiteSpace($seedId) -and $seedId -ne $LocalId) {
-        $shareWith += $seedId
-    }
     $wanted = Get-GridSyncFolders -Context $Context -Manifest $Manifest
     foreach ($folder in $wanted) {
         $id = [string]$folder.id
+        $shareWith = @($LocalId)
+        if (-not [string]::IsNullOrWhiteSpace($seedId) -and $seedId -ne $LocalId) {
+            $shareWith += $seedId
+        }
         $path = Get-GridFolderPath -Context $Context -Folder $folder
+        $folderType = [string](Get-GridProperty $folder 'type' 'sendreceive')
+        if ($seedId -ne $LocalId -and -not [bool]$Context.CanBeMain) {
+            $folderType = 'sendonly'
+        }
         Initialize-GridDirectory -Path $path
+        $existing = @($folders | Where-Object { [string]$_.id -eq $id })
+        if ($seedId -eq $LocalId -and $existing.Count -gt 0) {
+            foreach ($device in @((Get-GridProperty $existing[0] 'devices' @()))) {
+                $deviceId = [string](Get-GridProperty $device 'deviceID')
+                if (-not [string]::IsNullOrWhiteSpace($deviceId) -and $shareWith -notcontains $deviceId) {
+                    $shareWith += $deviceId
+                }
+            }
+        }
         $devices = @()
         foreach ($did in $shareWith) {
             $devices += [pscustomobject]@{ deviceID = $did; introducedBy = '' }
         }
-        $existing = @($folders | Where-Object { [string]$_.id -eq $id })
         if ($existing.Count -gt 0) {
             $existing[0].path = $path
             $existing[0].label = [string]$folder.name
-            $existing[0].type = [string](Get-GridProperty $folder 'type' 'sendreceive')
+            $existing[0].type = $folderType
             $existing[0].paused = $false
             $existing[0].devices = $devices
         } else {
@@ -339,7 +351,7 @@ function Set-GridSyncthingFolders {
             $newFolder | Add-Member -NotePropertyName id -NotePropertyValue $id -Force
             $newFolder | Add-Member -NotePropertyName label -NotePropertyValue ([string]$folder.name) -Force
             $newFolder | Add-Member -NotePropertyName path -NotePropertyValue $path -Force
-            $newFolder | Add-Member -NotePropertyName type -NotePropertyValue ([string](Get-GridProperty $folder 'type' 'sendreceive')) -Force
+            $newFolder | Add-Member -NotePropertyName type -NotePropertyValue $folderType -Force
             $newFolder | Add-Member -NotePropertyName devices -NotePropertyValue $devices -Force
             $newFolder | Add-Member -NotePropertyName paused -NotePropertyValue $false -Force
             $folders += $newFolder
@@ -384,11 +396,8 @@ function Invoke-GridConfigureStage {
     $manifest = Resolve-GridSyncManifest -Context $Context -DeviceId $deviceId
     $seedId = [string]$manifest.seedDevice.deviceId
     $isMain = ($seedId -eq $deviceId)
-    if ($Context.IsRoot -and $Context.SeedRequested) {
-        $isMain = $true
-        $seedId = $deviceId
-        $manifest.seedDevice.name = $Context.DeviceName
-        $manifest.seedDevice.deviceId = $deviceId
+    if (($Context.SeedRequested -or $isMain) -and -not [bool]$Context.CanBeMain) {
+        throw 'This device is not authorized to become or act as the Grid main. Set can_be_main=true only on the trusted main device.'
     }
     if ($Context.SeedRequested -and -not $isMain) {
         throw "This node used -Seed but the existing manifest seed ID is $seedId, which does not match $deviceId. Remove -Seed and pair as a second node, or copy the correct seed identity."
@@ -422,6 +431,9 @@ function Add-GridSyncthingPeer {
     $manifestPath = Find-GridSyncManifestPath -Context $Context
     if ([string]::IsNullOrWhiteSpace($manifestPath)) { throw 'Cannot approve a peer because the seed syncconfig manifest is missing.' }
     $manifest = Read-GridSyncManifest -Path $manifestPath
+    if (-not [bool]$Context.CanBeMain) {
+        throw 'This device cannot approve peers because can_be_main is false.'
+    }
     $localId = Get-GridSyncthingDeviceId -Context $Context
     if ($PeerId -eq $localId) { throw "The peer device ID is this node's own ID." }
     if ([string]$manifest.seedDevice.deviceId -ne $localId) {

@@ -104,8 +104,10 @@ function Get-GridPreflightReport {
         $checks.Add((Test-GridPreflightPackage -Context $Context -Id 'syncthing')) | Out-Null
     }
 
-    $isSeed = [bool]$Context.SeedRequested -or [bool]$Context.IsRoot -or [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)
-    if ($isSeed) {
+    $isSeed = [bool]$Context.SeedRequested -or [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)
+    if ($isSeed -and -not [bool]$Context.CanBeMain) {
+        $checks.Add((New-GridPreflightCheck -Name 'Main-device permission' -Status blocker -Reason 'This device is not authorized to become or administer the Grid main. Set can_be_main=true only on a trusted machine.')) | Out-Null
+    } elseif ($isSeed) {
         $checks.Add((New-GridPreflightCheck -Name 'Pairing data' -Status ready -Reason 'This setup is marked as the seed; it will generate syncconfig.json.')) | Out-Null
     } else {
         $manifestPath = $null

@@ -112,6 +112,13 @@ function Test-GridSettings {
     if ($null -ne $isRootAlt -and $isRootAlt -notin @($true, $false)) {
         throw "Config isRoot must be true or false: $SourcePath"
     }
+    $canBeMain = Get-GridProperty $Settings 'can_be_main' $false
+    if ($canBeMain -notin @($true, $false)) {
+        throw "Config can_be_main must be true or false: $SourcePath"
+    }
+    if ([bool](Get-GridProperty $Settings.device 'isMain' $false) -and -not [bool]$canBeMain) {
+        throw "Config device.isMain requires can_be_main=true: $SourcePath"
+    }
     $mode = [string](Get-GridProperty $Settings 'defaultMode')
     if (@('persistent', 'temporary') -notcontains $mode) {
         throw "Config defaultMode must be 'persistent' or 'temporary': $SourcePath"
@@ -169,6 +176,7 @@ function New-GridContext {
     if ($null -eq $isRoot -or $isRoot -eq $false) {
         $isRoot = [bool](Get-GridProperty $loaded.Settings 'isRoot')
     }
+    $canBeMain = [bool](Get-GridProperty $loaded.Settings 'can_be_main' $false)
     return [pscustomobject]@{
         Command          = $Command
         BootstrapRoot    = $bootstrapRoot
@@ -180,6 +188,7 @@ function New-GridContext {
         SeedRequested    = [bool]$Seed
         NonInteractive   = [bool]$NonInteractive
         IsRoot           = [bool]$isRoot
+        CanBeMain        = $canBeMain
         GridRoot         = $null
         StatePath        = $null
         DevicePath       = $null

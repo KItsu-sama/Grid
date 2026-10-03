@@ -11,6 +11,7 @@ Copy this repository onto a USB stick. Add vendor packages under `packages\` and
 ## Before setup
 
 Run `.\Grid.ps1 preflight -Seed` for a first node, or `.\Grid.ps1 preflight` for an additional node. The single [setup inputs guide](docs/setup-inputs.md) maps configuration files, package files, optional metadata, and the information needed for Tailscale sign-in and pairing.
+Set `can_be_main: true` only in the trusted main device's local `config/grid.json`; the example defaults to false.
 
 ## Commands
 
@@ -41,6 +42,8 @@ powershell -ExecutionPolicy Bypass -File .\Grid.ps1 setup -Seed
 | `uninstall` | Stop Syncthing and remove Grid runtime files/startup shortcut; preserve synced files and Tailscale. `-RemoveData` deletes configured Grid folders; `-RemoveDefaultSync` separately deletes `%USERPROFILE%\Sync` |
 
 Optional: `-Mode persistent|temporary`, `-TargetPath D:\PersonalGrid`, `-NonInteractive`.
+
+`can_be_main` defaults to false. Only the trusted main device should enable it. Non-main devices without this capability use send-only folders: they can submit local edits but cannot administer peers or apply remote file changes locally. This does not prevent a peer from changing shared content on the main.
 
 ## API
 

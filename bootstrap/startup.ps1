@@ -18,7 +18,7 @@ function Register-GridSyncthingStartup {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($linkPath)
     $shortcut.TargetPath = $Context.SyncthingBin
-    $shortcut.Arguments = "--home=`"$($Context.SyncthingHome)`" --no-browser --gui-address=$($Context.GuiAddress) --no-restart"
+    $shortcut.Arguments = (Get-GridSyncthingArguments -Context $Context) -join ' '
     $shortcut.WorkingDirectory = Split-Path -Parent $Context.SyncthingBin
     $shortcut.WindowStyle = 0
     $shortcut.Description = 'Personal Grid Syncthing (localhost GUI only)'

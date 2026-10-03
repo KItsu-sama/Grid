@@ -110,6 +110,17 @@ function Wait-GridSyncthingReady {
     throw "Syncthing local API was not reachable at $($Context.GuiAddress) within ${TimeoutSeconds}s."
 }
 
+function Get-GridSyncthingArguments {
+    param([Parameter(Mandatory = $true)]$Context)
+    return @(
+        "--home=`"$($Context.SyncthingHome)`"",
+        '--no-browser',
+        "--gui-address=$($Context.GuiAddress)",
+        '--no-restart',
+        '--no-upgrade'
+    )
+}
+
 function Start-GridSyncthing {
     param([Parameter(Mandatory = $true)]$Context)
     Install-GridSyncthingBinary -Context $Context
@@ -121,12 +132,7 @@ function Start-GridSyncthing {
     if ($owned.Count -gt 0) {
         return
     }
-    $argList = @(
-        "--home=$($Context.SyncthingHome)",
-        '--no-browser',
-        "--gui-address=$($Context.GuiAddress)",
-        '--no-restart'
-    )
+    $argList = Get-GridSyncthingArguments -Context $Context
     Start-Process -FilePath $Context.SyncthingBin -ArgumentList $argList -WindowStyle Hidden | Out-Null
     Wait-GridSyncthingReady -Context $Context | Out-Null
 }

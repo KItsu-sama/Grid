@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "defaultMode": "persistent",
   "is_root": false,
+  "can_be_main": false,
   "persistent": {
     "targetDrive": "AUTO",
     "targetPath": "",

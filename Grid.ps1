@@ -44,6 +44,9 @@ function Initialize-GridCommandContext {
 function Invoke-GridSetup {
     param($Context, [switch]$Repair)
     Assert-GridModeSupported -Context $Context
+    if (($Context.SeedRequested -or [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)) -and -not [bool]$Context.CanBeMain) {
+        throw 'This device is not authorized to become the Grid main. Set can_be_main=true only on the trusted main device.'
+    }
     $state = Read-GridInstallState -Context $Context
     Invoke-GridStage -Context $Context -State $state -Name 'prepare' -Force:$Repair -Action {
         Initialize-GridInstallation -Context $Context -State $state
@@ -106,6 +109,9 @@ function Invoke-GridApprovePeer {
         [string]$PeerName
     )
     Assert-GridModeSupported -Context $Context
+    if (-not [bool]$Context.CanBeMain) {
+        throw 'This device cannot approve peers because can_be_main is false.'
+    }
     if (-not (Test-Path -LiteralPath $Context.DevicePath)) {
         throw "No local Grid installation at $($Context.GridRoot). Run setup first."
     }

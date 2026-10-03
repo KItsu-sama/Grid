@@ -21,6 +21,8 @@ Describe 'Grid example configuration' {
         Test-GridSettings -Settings $doc -SourcePath $path
         $doc.schemaVersion | Should Be 1
         $doc.defaultMode | Should Be 'persistent'
+        $doc.is_root | Should Be $false
+        $doc.can_be_main | Should Be $false
         $doc.syncthing.folders.Count | Should Be 6
         (@($doc.syncthing.folders | ForEach-Object { $_.id }) -contains 'grid-inbox') | Should Be $true
     }
@@ -44,6 +46,14 @@ Describe 'Grid example configuration' {
         Set-Content -LiteralPath $tmp -Value '{"schemaVersion":99,"defaultMode":"persistent","persistent":{"targetDrive":"AUTO","targetFolder":"PersonalGrid","minimumFreeBytes":1},"device":{},"tailscale":{},"syncthing":{"folders":[]}}' -Encoding UTF8
         $doc = ConvertFrom-GridJson -Path $tmp -Label 'grid.json'
         { Test-GridSettings -Settings $doc -SourcePath $tmp } | Should Throw 'Unsupported config schemaVersion'
+    }
+
+    It 'requires explicit main capability when device.isMain is true' {
+        $settings = ConvertFrom-GridJson -Path (Join-Path $root 'config\grid.example.json') -Label 'grid.example.json'
+        $settings.device.isMain = $true
+        { Test-GridSettings -Settings $settings -SourcePath 'test-grid.json' } | Should Throw 'requires can_be_main=true'
+        $settings.can_be_main = $true
+        { Test-GridSettings -Settings $settings -SourcePath 'test-grid.json' } | Should Not Throw
     }
 
     It 'loads example defaults when grid.json is absent' {
@@ -99,14 +109,16 @@ Describe 'Drive selection' {
     }
 
     It 'respects a manual target path' {
-        $manual = New-GridContext -LauncherRoot $root -Command 'setup' -TargetPath 'C:\Users\Admin\GridData'
+        $manualRoot = New-GridExampleOnlyTestRoot -Name 'manual-target'
+        $manual = New-GridContext -LauncherRoot $manualRoot -Command 'setup' -TargetPath 'C:\Users\Admin\GridData'
         $choice = Select-GridTargetDrive -Context $manual -Drives (Get-GridCandidateDrives -Context $manual -Disks $script:GridDisks)
         $choice.Strategy | Should Be 'manual-path'
         $choice.GridRoot | Should Match 'GridData$'
     }
 
     It 'resolves temporary GridRoot without implementing the mode' {
-        $tmpCtx = New-GridContext -LauncherRoot $root -Command 'setup' -Mode 'temporary'
+        $temporaryRoot = New-GridExampleOnlyTestRoot -Name 'temporary-mode'
+        $tmpCtx = New-GridContext -LauncherRoot $temporaryRoot -Command 'setup' -Mode 'temporary'
         $envInfo = [pscustomobject]@{ Installations = @(); Architecture = 'amd64'; Drives = @() }
         $resolved = Resolve-GridRuntime -Context $tmpCtx -Environment $envInfo
         $resolved.GridRoot | Should Be $resolved.TemporaryRuntime

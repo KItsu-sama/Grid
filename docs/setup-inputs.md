@@ -16,6 +16,8 @@ Use this page as the map of files and information needed before setup. For a fir
 
 `config/grid.json` is a local override and `config/syncconfig.json` is generated on the seed. `config/secret.json` is not read by this release and is not required; do not put credentials there. Vendor installers and local metadata should stay out of Git.
 
+`can_be_main` defaults to `false`. Set it to `true` only in the local settings of a trusted main-capable device; `device.isMain: true` requires this capability. Keep `is_root: false` for a fresh install unless you intentionally want to reset an existing root installation.
+
 ## Host and storage
 
 Use Windows PowerShell 5.1. Persistent setup needs a fixed local drive with at least 10 GiB free by default. AUTO chooses the eligible drive with the most free space; use `-TargetPath` or `persistent.targetPath` in `config/grid.json` to choose another location.

@@ -6,11 +6,19 @@ Get-ChildItem -LiteralPath (Join-Path $root 'bootstrap') -Filter '*.ps1' | Sort-
     . $_.FullName
 }
 
+function New-TestStateLauncherRoot {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    $testRoot = Join-Path $TestDrive $Name
+    New-Item -ItemType Directory -Path (Join-Path $testRoot 'config') -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $root 'config\grid.example.json') -Destination (Join-Path $testRoot 'config\grid.example.json') -Force
+    return $testRoot
+}
+
 Describe 'Install state' {
     It 'writes state atomically and resumes completed stages' {
         $gridRoot = Join-Path $TestDrive 'PersonalGrid'
         New-Item -ItemType Directory -Path (Join-Path $gridRoot '.grid') -Force | Out-Null
-        $ctx = New-GridContext -LauncherRoot $root -Command 'setup'
+        $ctx = New-GridContext -LauncherRoot (New-TestStateLauncherRoot -Name 'state-resume') -Command 'setup'
         Set-GridContextRoot -Context $ctx -GridRoot $gridRoot | Out-Null
         $state = New-GridInstallState
         Set-GridStageStatus -Context $ctx -State $state -Name 'prepare' -Status completed
@@ -27,7 +35,7 @@ Describe 'Install state' {
     It 'records failure without dropping earlier completed stages' {
         $gridRoot = Join-Path $TestDrive 'PersonalGrid-fail'
         New-Item -ItemType Directory -Path (Join-Path $gridRoot '.grid') -Force | Out-Null
-        $ctx = New-GridContext -LauncherRoot $root -Command 'setup'
+        $ctx = New-GridContext -LauncherRoot (New-TestStateLauncherRoot -Name 'state-failure') -Command 'setup'
         Set-GridContextRoot -Context $ctx -GridRoot $gridRoot | Out-Null
         $state = New-GridInstallState
         Set-GridStageStatus -Context $ctx -State $state -Name 'prepare' -Status completed
@@ -40,7 +48,7 @@ Describe 'Install state' {
 
     It 'does not treat an existing Syncthing cert/key pair as missing' {
         $gridRoot = Join-Path $TestDrive 'PersonalGrid-id'
-        $ctx = New-GridContext -LauncherRoot $root -Command 'setup'
+        $ctx = New-GridContext -LauncherRoot (New-TestStateLauncherRoot -Name 'state-identity') -Command 'setup'
         Set-GridContextRoot -Context $ctx -GridRoot $gridRoot | Out-Null
         New-Item -ItemType Directory -Path $ctx.SyncthingHome -Force | Out-Null
         Get-GridSyncthingIdentityExists -Context $ctx | Should Be $false
@@ -50,7 +58,7 @@ Describe 'Install state' {
     }
 
     It 'refuses unverified package hashes' {
-        $ctx = New-GridContext -LauncherRoot $root -Command 'setup'
+        $ctx = New-GridContext -LauncherRoot (New-TestStateLauncherRoot -Name 'state-package') -Command 'setup'
         $spec = [pscustomobject]@{ file = 'dummy.exe'; sha256 = 'REPLACE_ME' }
         $dummy = Join-Path $TestDrive 'dummy.exe'
         Set-Content -LiteralPath $dummy -Value 'x'
