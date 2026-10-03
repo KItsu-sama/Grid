@@ -10,7 +10,7 @@ Place vendor-signed installers here, then put the matching SHA-256 in `manifest.
 
 | ID | Architecture | Version | File name | SHA-256 |
 | --- | --- | --- | --- | --- |
-| syncthing | amd64 | SyncTrayzor Portable x64 | `SyncTrayzorPortable-x64.zip` | `2ed9cc53ac83c287e069f8dcfa3ac801daf7d2ac76c93457021712ff6785662` |
+| syncthing | amd64 | SyncTrayzor Portable x64 | `SyncTrayzorPortable-x64.zip` | `2ed9cc53ac83c287e069f8dcfa3ac801daf7d2ac76c93457021f712ff6785662` |
 | tailscale | amd64 | 1.102.4 | `tailscale-setup-1.102.4.exe` | `dc874bb9db4a93e1e412f44ed629ec4b432ae24c7322f9d51d445b15a852a9e5` |
 
 ## Sources (manual download, then copy onto the USB)
@@ -24,3 +24,5 @@ Place vendor-signed installers here, then put the matching SHA-256 in `manifest.
 2. `<GridRoot>\packages\` (local copy after a successful verify)
 
 Never execute an unverified installer.
+
+The current catalog contains amd64 artifacts only. On ARM64, preflight/setup stops with a missing architecture-specific package instead of substituting an x64 binary.

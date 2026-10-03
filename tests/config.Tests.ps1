@@ -113,3 +113,14 @@ Describe 'Drive selection' {
         { Assert-GridModeSupported -Context $resolved } | Should Throw 'not supported'
     }
 }
+
+Describe 'Package architecture selection' {
+    It 'does not substitute amd64 packages on ARM64' {
+        $testRoot = New-GridExampleOnlyTestRoot -Name 'arm64-packages'
+        New-Item -ItemType Directory -Path (Join-Path $testRoot 'packages') -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $root 'packages\manifest.json') -Destination (Join-Path $testRoot 'packages\manifest.json') -Force
+        $context = New-GridContext -LauncherRoot $testRoot -Command 'preflight'
+        $context | Add-Member -NotePropertyName Environment -NotePropertyValue ([pscustomobject]@{ Architecture = 'arm64' }) -Force
+        { Find-GridPackageSpec -Context $context -Id 'syncthing' } | Should Throw 'A different architecture package is never substituted'
+    }
+}

@@ -1,3 +1,4 @@
+#/ bootstrap/syncthing.ps1 - manage the Syncthing binary and local API for the personal grid
 Set-StrictMode -Version Latest
 
 function Get-GridSyncthingIdentityExists {

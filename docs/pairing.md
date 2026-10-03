@@ -12,15 +12,21 @@ For the complete map of setup files and prerequisites, see [setup inputs](setup-
 4. Syncthing creates an identity under `<GridRoot>\.grid\syncthing`. That identity is reused on later runs.
 5. Setup writes `config\syncconfig.json` (on the USB, if writable) and `<GridRoot>\.grid\syncconfig.json`. The manifest contains the seed device ID and folder IDs. It does not contain private keys, GUI API keys, or Tailscale auth keys.
 
-Machine-specific secrets stay in `config\secret.json`, while the generated `syncconfig.json` remains the non-secret pairing manifest. `syncconfig.json` is gitignored. Cloning the repo onto another PC does not transfer the seed.
+`config\secret.json` is not read by this release and is not required. Machine identity is saved under `<GridRoot>\.grid`; `syncconfig.json` is gitignored. Cloning the repo onto another PC does not transfer the seed.
 
 ## Second node
 
 1. Copy the generated `syncconfig.json` onto the new USB (or next to the launcher at `config\syncconfig.json`).
 2. Run `.\Grid.ps1 setup` **without** `-Seed`. Missing manifest is an error, not a second silent seed.
 3. The launcher prints this node's Syncthing device ID.
-4. On the seed, add/approve that device ID once (Syncthing UI on localhost, or equivalent).
-5. The new node waits until it sees the seed connected and folder IDs match.
+4. On the seed, explicitly approve the printed device ID and share the manifest folders:
+
+	```powershell
+	.\Grid.ps1 approve-peer -PeerId '<printed device ID>' -PeerName 'Laptop'
+	```
+
+	This adds the device and shares only the folders named in `syncconfig.json`. It does not enable blanket folder auto-accept.
+5. The new node waits until it sees the seed connected and the shared folders begin syncing. Audit reports initial scanning/syncing as pending.
 6. Later `.\Grid.ps1 start` reuses saved configuration and does not regenerate IDs.
 
 ## What this release will not do

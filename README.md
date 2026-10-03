@@ -6,7 +6,7 @@ Temporary USB runtime, Android onboarding, and remote command execution are **ou
 
 ## USB layout
 
-Copy this repository onto a USB stick. Add vendor packages under `packages\` and pin SHA-256 values in `packages\manifest.json` (see [packages/README.md](packages/README.md)). Do not commit `config\grid.json`, `config\syncconfig.json`, `config\secret.json`, or `tailscale.txt`.
+Copy this repository onto a USB stick. Add vendor packages under `packages\` and pin SHA-256 values in `packages\manifest.json` (see [packages/README.md](packages/README.md)). Do not commit `config\grid.json`, `config\syncconfig.json`, or `tailscale.txt`.
 
 ## Before setup
 
@@ -22,16 +22,23 @@ powershell -ExecutionPolicy Bypass -File .\Grid.ps1 setup -Seed
 .\Grid.ps1 status
 .\Grid.ps1 audit
 .\Grid.ps1 repair
+.\Grid.ps1 approve-peer -PeerId '<Syncthing device ID>' -PeerName 'Laptop'
+.\Grid.ps1 uninstall
+# Add a removal switch only when the corresponding user data should be deleted.
+.\Grid.ps1 uninstall -RemoveData
+.\Grid.ps1 uninstall -RemoveDefaultSync
 ```
 
 | Command | Behavior |
 | --- | --- |
 | `preflight` | Report blockers only (or `No blockers found`); never installs, starts services, or opens sign-in |
 | `setup` | Load → detect → persistent GridRoot → prepare → Tailscale → Syncthing identity → configure/pair → startup → audit |
-| `start` | Reuse saved identity; start Tailscale service if needed; start Syncthing with `--home` under GridRoot |
+| `start` | Start an already-installed Tailscale service if present and start Syncthing with `--home` under GridRoot; never install or sign in |
 | `stop` | Stop this node's Syncthing only (does not log out Tailscale) |
-| `status` / `audit` | Structured checks; `PERSONAL GRID ONLINE` only when peer and folder checks pass |
+| `status` / `audit` | Read-only health checks; they do not start Syncthing. Scanning/syncing folders are pending; actual failures return a nonzero exit code |
 | `repair` | Recreate missing folders/files, restart components, keep Syncthing identity |
+| `approve-peer` | On the seed, explicitly trust a supplied device ID and share only folders from the seed manifest |
+| `uninstall` | Stop Syncthing and remove Grid runtime files/startup shortcut; preserve synced files and Tailscale. `-RemoveData` deletes configured Grid folders; `-RemoveDefaultSync` separately deletes `%USERPROFILE%\Sync` |
 
 Optional: `-Mode persistent|temporary`, `-TargetPath D:\PersonalGrid`, `-NonInteractive`.
 

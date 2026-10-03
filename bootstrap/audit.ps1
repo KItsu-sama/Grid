@@ -1,3 +1,4 @@
+#/// audit.ps1 - audit the health of the personal grid
 Set-StrictMode -Version Latest
 
 function New-GridCheck {
@@ -5,11 +6,13 @@ function New-GridCheck {
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)][bool]$Passed,
         [Parameter(Mandatory = $true)][string]$Reason,
+        [switch]$Pending,
         [ValidateSet('setup', 'online')][string]$Scope = 'setup'
     )
     return [pscustomobject]@{
         name   = $Name
         passed = $Passed
+        pending = [bool]$Pending
         reason = $Reason
         scope  = $Scope
     }
@@ -26,6 +29,9 @@ function Get-GridFolderSyncIssue {
         return 'folder status response is missing state, needTotalItems, or pullErrors'
     }
 
+    if ($state -in @('scanning', 'syncing') -and [long]$pullErrors -eq 0) {
+        return "pending: state=$state needTotalItems=$need pullErrors=$pullErrors"
+    }
     if ($state -ne 'idle' -or [long]$need -ne 0 -or [long]$pullErrors -ne 0) {
         return "state=$state needTotalItems=$need pullErrors=$pullErrors"
     }
@@ -65,7 +71,7 @@ function Invoke-GridAudit {
 
     $folderFail = @()
     if ($rootOk) {
-        foreach ($folder in Get-GridEnabledFolders -Context $Context) {
+        foreach ($folder in Get-GridSyncFolders -Context $Context) {
             $p = Get-GridFolderPath -Context $Context -Folder $folder
             if (-not (Test-Path -LiteralPath $p)) { $folderFail += $folder.name }
         }
@@ -89,13 +95,13 @@ function Invoke-GridAudit {
     $syncthingConfig = $null
     $peerReason = 'peer not evaluated'
     $folderSyncOk = $false
+    $folderSyncPending = $false
     $folderSyncReason = 'folder sync not evaluated'
     $manifestPath = Find-GridSyncManifestPath -Context $Context
     $isMain = $false
     $seedId = $null
     try {
         if ($binOk -and $idOk) {
-            Start-GridSyncthing -Context $Context
             $status = Wait-GridSyncthingReady -Context $Context -TimeoutSeconds 20
             $apiOk = $true
             $myId = [string](Get-GridProperty $status 'myID')
@@ -132,8 +138,9 @@ function Invoke-GridAudit {
                 $peerReason = 'seed manifest missing'
             }
             $bad = @()
+            $pendingFolders = @()
             if ($null -eq $syncthingConfig) { $syncthingConfig = Get-GridSyncthingConfig -Context $Context }
-            foreach ($folder in Get-GridEnabledFolders -Context $Context) {
+            foreach ($folder in Get-GridSyncFolders -Context $Context) {
                 $id = [string]$folder.id
                 try {
                     $configuredFolder = @($syncthingConfig.folders | Where-Object { [string]$_.id -eq $id }) | Select-Object -First 1
@@ -145,13 +152,24 @@ function Invoke-GridAudit {
                     $encodedId = [System.Uri]::EscapeDataString($id)
                     $folderStatus = Invoke-GridSyncthingApi -Context $Context -Method GET -Path "/rest/db/status?folder=$encodedId"
                     $issue = Get-GridFolderSyncIssue -Status $folderStatus
-                    if ($null -ne $issue) { $bad += "$id ($issue)" }
+                    if ($null -ne $issue -and $issue.StartsWith('pending:')) {
+                        $pendingFolders += "$id ($issue)"
+                    } elseif ($null -ne $issue) {
+                        $bad += "$id ($issue)"
+                    }
                 } catch {
                     $bad += "$id ($($_.Exception.Message))"
                 }
             }
-            $folderSyncOk = ($bad.Count -eq 0)
-            $folderSyncReason = $(if ($folderSyncOk) { 'all enabled folders are idle, complete, and have no pull errors' } else { ($bad -join ', ') })
+            $folderSyncOk = ($bad.Count -eq 0 -and $pendingFolders.Count -eq 0)
+            $folderSyncPending = ($bad.Count -eq 0 -and $pendingFolders.Count -gt 0)
+            if ($folderSyncOk) {
+                $folderSyncReason = 'all enabled folders are idle, complete, and have no pull errors'
+            } elseif ($folderSyncPending) {
+                $folderSyncReason = $pendingFolders -join ', '
+            } else {
+                $folderSyncReason = $bad -join ', '
+            }
         }
     } catch {
         $apiOk = $false
@@ -161,17 +179,20 @@ function Invoke-GridAudit {
     $checks.Add((New-GridCheck -Name 'syncthing-api' -Passed $apiOk -Reason $(if ($apiOk) { "GUI $($Context.GuiAddress) myID=$myId" } else { 'local Syncthing API not reachable' }) -Scope online)) | Out-Null
     $checks.Add((New-GridCheck -Name 'required-peer-configured' -Passed $peerConfigured -Reason $peerReason -Scope online)) | Out-Null
     $checks.Add((New-GridCheck -Name 'required-peer-connected' -Passed $peerConnected -Reason $peerReason -Scope online)) | Out-Null
-    $checks.Add((New-GridCheck -Name 'folder-sync' -Passed $folderSyncOk -Reason $folderSyncReason -Scope online)) | Out-Null
+    $checks.Add((New-GridCheck -Name 'folder-sync' -Passed $folderSyncOk -Pending:$folderSyncPending -Reason $folderSyncReason -Scope online)) | Out-Null
 
     $setupChecks = @($checks | Where-Object { $_.scope -eq 'setup' })
     $onlineChecks = @($checks | Where-Object { $_.scope -eq 'online' })
-    $setupComplete = @($setupChecks | Where-Object { -not $_.passed }).Count -eq 0
-    $gridOnline = $setupComplete -and (@($onlineChecks | Where-Object { -not $_.passed }).Count -eq 0)
+    $setupComplete = @($setupChecks | Where-Object { -not $_.passed -and -not $_.pending }).Count -eq 0
+    $failedChecks = @($checks | Where-Object { -not $_.passed -and -not $_.pending })
+    $pendingChecks = @($checks | Where-Object { $_.pending })
+    $gridOnline = $setupComplete -and (@($failedChecks | Where-Object { $_.scope -eq 'online' }).Count -eq 0) -and (@($pendingChecks | Where-Object { $_.scope -eq 'online' }).Count -eq 0)
 
-    $failedSetup = @($setupChecks | Where-Object { -not $_.passed })
-    $failedOnline = @($onlineChecks | Where-Object { -not $_.passed })
+    $failedSetup = @($setupChecks | Where-Object { -not $_.passed -and -not $_.pending })
+    $failedOnline = @($onlineChecks | Where-Object { -not $_.passed -and -not $_.pending })
     $overall = 'failed'
     if ($setupComplete -and $gridOnline) { $overall = 'healthy' }
+    elseif ($setupComplete -and $failedOnline.Count -eq 0 -and $pendingChecks.Count -gt 0) { $overall = 'pending' }
     elseif ($setupComplete) { $overall = 'degraded' }
 
     return [pscustomobject]@{
@@ -181,6 +202,7 @@ function Invoke-GridAudit {
         checks        = @($checks.ToArray())
         failedSetup   = @($failedSetup)
         failedOnline  = @($failedOnline)
+        pendingChecks = @($pendingChecks)
         deviceId      = $myId
         isMain        = $isMain
         gridRoot      = $Context.GridRoot
@@ -197,7 +219,7 @@ function Write-GridAuditReport {
     Write-Host "Setup complete: $($Audit.setupComplete)"
     Write-Host "Grid online: $($Audit.gridOnline)"
     foreach ($c in $Audit.checks) {
-        $mark = if ($c.passed) { 'PASS' } else { 'FAIL' }
+        $mark = if ($c.pending) { 'PENDING' } elseif ($c.passed) { 'PASS' } else { 'FAIL' }
         Write-Host ("  [{0}] {1} ({2}) - {3}" -f $mark, $c.name, $c.scope, $c.reason)
     }
     if ($Audit.gridOnline) {
@@ -206,7 +228,9 @@ function Write-GridAuditReport {
     } else {
         Write-Host ''
         Write-Host 'PERSONAL GRID NOT ONLINE'
-        if ($Audit.setupComplete) {
+        if ($Audit.overall -eq 'pending') {
+            Write-Host 'Folder scanning or synchronization is still in progress; rerun audit after it settles.'
+        } elseif ($Audit.setupComplete) {
             Write-Host 'Local setup is saved. An offline peer or incomplete pairing degrades health without resetting identity.'
         }
     }

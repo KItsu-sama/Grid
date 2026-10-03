@@ -8,15 +8,13 @@ Use this page as the map of files and information needed before setup. For a fir
 | --- | --- | --- |
 | `config/grid.example.json` | Safe default settings. Used automatically when `config/grid.json` is absent. | No editing required. |
 | `config/grid.json` | Local settings override. Copy the example here only to customize values such as storage location or enabled folders. | Optional. |
-| `config/secret.example.json` | Safe template for local machine-specific values such as the seed device ID and device name. | Optional template. |
-| `config/secret.json` | Local-only secret store for machine-specific values. Keep only the real device name/ID and other secrets that must not be committed. | Required locally when the machine-specific secret values are used. |
 | `config/syncconfig.example.json` | Template used to generate the first node's pairing manifest. | No editing required. |
 | `config/syncconfig.json` | Generated on the seed; copy it to the USB for every additional node. | Required for an additional node. |
 | `packages/manifest.json` | Package catalog and expected SHA-256 hashes. | Required when an installer is needed; keep hashes accurate. |
 | `packages/<vendor installer>` | Offline vendor installer for Tailscale or Syncthing when it is not already installed. | Conditional. Setup does not download installers. |
 | `tailscale.txt` | Optional Tailscale account-email metadata copied into local device metadata. | Optional; never used for sign-in. |
 
-`config/grid.json` is a local override; `config/syncconfig.json` is generated on the seed; `config/secret.json` is the local-only machine-specific secret store. Vendor installers, local metadata, and machine-specific values should stay out of Git. Do not commit any of them.
+`config/grid.json` is a local override and `config/syncconfig.json` is generated on the seed. `config/secret.json` is not read by this release and is not required; do not put credentials there. Vendor installers and local metadata should stay out of Git.
 
 ## Host and storage
 
@@ -26,7 +24,7 @@ Use Windows PowerShell 5.1. Persistent setup needs a fixed local drive with at l
 
 For the first node, run `.\Grid.ps1 setup -Seed`. It creates the seed manifest; no `syncconfig.json` needs to be provided in advance.
 
-For an additional node, copy the seed's generated `config/syncconfig.json` onto this USB at that same path, then run `.\Grid.ps1 setup` without `-Seed`. See [the pairing steps](pairing.md) for approval and connection checks.
+For an additional node, copy the seed's generated `config/syncconfig.json` onto this USB at that same path, then run `.\Grid.ps1 setup` without `-Seed`. On the seed, run `approve-peer` with the new node's printed Syncthing device ID to explicitly add the peer and share manifest folders. See [the pairing steps](pairing.md) for details.
 
 ## Tailscale sign-in
 

@@ -1,3 +1,4 @@
+#/ bootstrap/startup.ps1 - register the personal grid for startup on Windows
 Set-StrictMode -Version Latest
 
 function Get-GridStartupShortcutPath {
@@ -9,6 +10,7 @@ function Register-GridSyncthingStartup {
     param([Parameter(Mandatory = $true)]$Context)
     $autostart = [bool](Get-GridProperty $Context.Settings.persistent 'autostart' $true)
     if (-not $autostart) {
+        Unregister-GridSyncthingStartup
         Write-GridLog -Context $Context -Message 'persistent.autostart is false; not creating a Startup shortcut.'
         return
     }
@@ -18,7 +20,7 @@ function Register-GridSyncthingStartup {
     $shortcut.TargetPath = $Context.SyncthingBin
     $shortcut.Arguments = "--home=`"$($Context.SyncthingHome)`" --no-browser --gui-address=$($Context.GuiAddress) --no-restart"
     $shortcut.WorkingDirectory = Split-Path -Parent $Context.SyncthingBin
-    $shortcut.WindowStyle = 7
+    $shortcut.WindowStyle = 0
     $shortcut.Description = 'Personal Grid Syncthing (localhost GUI only)'
     $shortcut.Save()
     Write-GridLog -Context $Context -Message "Registered current-user Startup shortcut: $linkPath"

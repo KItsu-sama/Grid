@@ -1,3 +1,4 @@
+#/ bootstrap/tailscale.ps1 - manage the Tailscale binary and service for the personal grid
 Set-StrictMode -Version Latest
 
 function Get-GridPackageManifest {
@@ -29,10 +30,7 @@ function Find-GridPackageSpec {
     $manifest = Get-GridPackageManifest -Context $Context
     $matches = @($manifest.packages | Where-Object { $_.id -eq $Id -and $_.arch -eq $Arch })
     if ($matches.Count -eq 0) {
-        $matches = @($manifest.packages | Where-Object { $_.id -eq $Id -and $_.arch -eq 'amd64' })
-    }
-    if ($matches.Count -eq 0) {
-        throw "No package spec for id='$Id' arch='$Arch' in packages/manifest.json."
+        throw "No package spec for id='$Id' arch='$Arch' in packages/manifest.json. A different architecture package is never substituted."
     }
     return $matches[0]
 }

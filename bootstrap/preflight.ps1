@@ -1,3 +1,4 @@
+#/ bootstrap/preflight.ps1 - preflight checks for the personal grid
 Set-StrictMode -Version Latest
 
 function Initialize-GridPreflightContext {

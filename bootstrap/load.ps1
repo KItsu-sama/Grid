@@ -1,3 +1,4 @@
+#/ bootstrap/load.ps1 - load the personal grid bootstrap environment
 Set-StrictMode -Version Latest
 
 $script:GridSupportedSchema = 1

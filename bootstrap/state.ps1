@@ -1,3 +1,4 @@
+#/ bootstrap/state.ps1 - manage the state of the personal grid bootstrap process
 Set-StrictMode -Version Latest
 
 function New-GridInstallState {

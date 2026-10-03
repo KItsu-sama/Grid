@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('setup', 'start', 'stop', 'status', 'audit', 'repair', 'preflight')]
+    [ValidateSet('setup', 'start', 'stop', 'status', 'audit', 'repair', 'preflight', 'uninstall', 'approve-peer')]
     [string]$Command = 'status',
 
     [ValidateSet('persistent', 'temporary')]
@@ -12,7 +12,15 @@ param(
 
     [switch]$Seed,
 
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+
+    [switch]$RemoveData,
+
+    [switch]$RemoveDefaultSync,
+
+    [string]$PeerId,
+
+    [string]$PeerName
 )
 
 Set-StrictMode -Version Latest
@@ -68,10 +76,10 @@ function Invoke-GridStart {
     if (-not (Test-Path -LiteralPath $Context.DevicePath)) {
         throw "No persistent installation at $($Context.GridRoot). Run .\Grid.ps1 setup first."
     }
-    Invoke-GridTailscaleStage -Context $Context
+    Start-GridTailscaleService | Out-Null
     Start-GridSyncthing -Context $Context
     $audit = Invoke-GridAudit -Context $Context
-    Write-GridAuditReport -Audit $audit
+    Complete-GridAuditCommand -Audit $audit
 }
 
 function Invoke-GridStop {
@@ -79,6 +87,39 @@ function Invoke-GridStop {
     Assert-GridModeSupported -Context $Context
     Stop-GridSyncthing -Context $Context
     Write-GridLog -Context $Context -Message 'Stopped Grid-owned Syncthing. Tailscale was left running (system service / existing tailnet).'
+}
+
+function Invoke-GridUninstall {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [switch]$RemoveData,
+        [switch]$RemoveDefaultSync
+    )
+    Assert-GridModeSupported -Context $Context
+    Uninstall-GridInstallation -Context $Context -RemoveData:$RemoveData -RemoveDefaultSync:$RemoveDefaultSync
+}
+
+function Invoke-GridApprovePeer {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)][string]$PeerId,
+        [string]$PeerName
+    )
+    Assert-GridModeSupported -Context $Context
+    if (-not (Test-Path -LiteralPath $Context.DevicePath)) {
+        throw "No local Grid installation at $($Context.GridRoot). Run setup first."
+    }
+    if ([string]::IsNullOrWhiteSpace($PeerName)) { $PeerName = 'Grid peer' }
+    Start-GridSyncthing -Context $Context
+    Add-GridSyncthingPeer -Context $Context -PeerId $PeerId -PeerName $PeerName
+}
+
+function Complete-GridAuditCommand {
+    param([Parameter(Mandatory = $true)]$Audit)
+    Write-GridAuditReport -Audit $Audit
+    if ($Audit.overall -eq 'failed' -or $Audit.overall -eq 'degraded') {
+        exit 1
+    }
 }
 
 function Invoke-GridPreflight {
@@ -99,17 +140,19 @@ try {
         'setup'  { Invoke-GridSetup -Context $context }
         'repair' { Invoke-GridSetup -Context $context -Repair }
         'preflight' { Invoke-GridPreflight -Context $context | Out-Null }
+        'uninstall' { Invoke-GridUninstall -Context $context -RemoveData:$RemoveData -RemoveDefaultSync:$RemoveDefaultSync }
+        'approve-peer' { Invoke-GridApprovePeer -Context $context -PeerId $PeerId -PeerName $PeerName }
         'start'  { Invoke-GridStart -Context $context }
         'stop'   { Invoke-GridStop -Context $context }
         'status' {
             Assert-GridModeSupported -Context $context
             $audit = Invoke-GridAudit -Context $context
-            Write-GridAuditReport -Audit $audit
+            Complete-GridAuditCommand -Audit $audit
         }
         'audit' {
             Assert-GridModeSupported -Context $context
             $audit = Invoke-GridAudit -Context $context
-            Write-GridAuditReport -Audit $audit
+            Complete-GridAuditCommand -Audit $audit
             $audit
         }
     }

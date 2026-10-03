@@ -1,3 +1,4 @@
+#/ bootstrap/detect.ps1 - detect the environment and runtime for the personal grid
 Set-StrictMode -Version Latest
 
 function Test-GridInternet {
@@ -219,7 +220,8 @@ function Find-GridInstallations {
 function Get-GridWindowsInfo {
     $os = $null
     try { $os = Get-CimInstance Win32_OperatingSystem } catch { $os = Get-WmiObject Win32_OperatingSystem }
-    $arch = $env:PROCESSOR_ARCHITECTURE
+    $arch = $env:PROCESSOR_ARCHITEW6432
+    if ([string]::IsNullOrWhiteSpace($arch)) { $arch = $env:PROCESSOR_ARCHITECTURE }
     if ($arch -eq 'AMD64') { $arch = 'amd64' }
     elseif ($arch -eq 'ARM64') { $arch = 'arm64' }
     else { $arch = $arch.ToLowerInvariant() }
