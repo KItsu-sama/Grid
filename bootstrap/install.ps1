@@ -38,13 +38,28 @@ function Initialize-GridFolderLayout {
 function Write-GridDeviceStub {
     param([Parameter(Mandatory = $true)]$Context)
     if (Test-Path -LiteralPath $Context.DevicePath) {
+        $existing = Read-GridDeviceDocument -Context $Context
+        if ([string]::IsNullOrWhiteSpace([string](Get-GridProperty $existing 'gridDeviceId' ''))) {
+            $existing | Add-Member -NotePropertyName gridDeviceId -NotePropertyValue ([guid]::NewGuid().ToString('N')) -Force
+            $gridRole = [string](Get-GridProperty $Context.Settings.device 'role' '').ToUpperInvariant()
+            if ([bool](Get-GridProperty $existing 'isMain' $false)) { $gridRole = 'MAIN' }
+            elseif ($gridRole -notin @('WORKER', 'CLIENT')) { $gridRole = 'CLIENT' }
+            $existing | Add-Member -NotePropertyName gridRole -NotePropertyValue $gridRole -Force
+            Write-GridJsonAtomic -Path $Context.DevicePath -InputObject $existing
+        }
         return
     }
+    $gridRole = [string](Get-GridProperty $Context.Settings.device 'role' '').ToUpperInvariant()
+    $isMain = [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)
+    if ($isMain) { $gridRole = 'MAIN' }
+    elseif ($gridRole -notin @('WORKER', 'CLIENT')) { $gridRole = 'CLIENT' }
     $device = [pscustomobject]@{
         schemaVersion = 1
+        gridDeviceId  = [guid]::NewGuid().ToString('N')
+        gridRole      = $gridRole
         deviceName    = $Context.DeviceName
         role          = [string](Get-GridProperty $Context.Settings.device 'role' 'development')
-        isMain        = [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)
+        isMain        = $isMain
         mode          = $Context.Mode
         syncEnabled   = [bool](Get-GridProperty $Context.Settings.syncthing 'enabled' $true)
         gridRoot      = $Context.GridRoot
@@ -63,7 +78,14 @@ function Copy-GridBootstrapSnapshot {
     Initialize-GridDirectory -Path (Join-Path $dest 'bootstrap')
     Initialize-GridDirectory -Path (Join-Path $dest 'config')
     Initialize-GridDirectory -Path (Join-Path $dest 'packages')
+    Initialize-GridDirectory -Path (Join-Path $dest 'agent')
     Copy-Item -LiteralPath (Join-Path $Context.BootstrapRoot 'Grid.ps1') -Destination (Join-Path $dest 'Grid.ps1') -Force
+    foreach ($agentItem in @('grid_agent', 'requirements.txt', 'pyproject.toml')) {
+        $agentSource = Join-Path (Join-Path $Context.BootstrapRoot 'agent') $agentItem
+        if (Test-Path -LiteralPath $agentSource) {
+            Copy-Item -LiteralPath $agentSource -Destination (Join-Path (Join-Path $dest 'agent') $agentItem) -Recurse -Force
+        }
+    }
     Get-ChildItem -LiteralPath (Join-Path $Context.BootstrapRoot 'bootstrap') -Filter '*.ps1' | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination (Join-Path (Join-Path $dest 'bootstrap') $_.Name) -Force
     }

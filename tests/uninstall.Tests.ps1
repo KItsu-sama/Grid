@@ -87,9 +87,13 @@ Describe 'Bootstrap snapshot' {
         New-Item -ItemType Directory -Path (Join-Path $bootstrapRoot 'config') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $bootstrapRoot 'bootstrap') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $bootstrapRoot 'packages') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $bootstrapRoot 'agent\grid_agent') -Force | Out-Null
         Copy-Item -LiteralPath (Join-Path $root 'Grid.ps1') -Destination (Join-Path $bootstrapRoot 'Grid.ps1')
         Copy-Item -LiteralPath (Join-Path $root 'config\grid.example.json') -Destination (Join-Path $bootstrapRoot 'config\grid.example.json')
         Copy-Item -LiteralPath (Join-Path $root 'config\syncconfig.example.json') -Destination (Join-Path $bootstrapRoot 'config\syncconfig.example.json')
+        Set-Content -LiteralPath (Join-Path $bootstrapRoot 'agent\grid_agent\__main__.py') -Value 'from .cli import main'
+        Set-Content -LiteralPath (Join-Path $bootstrapRoot 'agent\requirements.txt') -Value 'fastapi>=0.110'
+        Set-Content -LiteralPath (Join-Path $bootstrapRoot 'agent\pyproject.toml') -Value '[project]'
         Set-Content -LiteralPath (Join-Path $bootstrapRoot 'bootstrap\audit.ps1') -Value 'Set-StrictMode -Version Latest'
         Set-Content -LiteralPath (Join-Path $bootstrapRoot 'packages\manifest.json') -Value '{"schemaVersion":1,"packages":[]}'
         $settings = ConvertFrom-GridJson -Path (Join-Path $bootstrapRoot 'config\grid.example.json') -Label 'grid.example.json'
@@ -105,6 +109,8 @@ Describe 'Bootstrap snapshot' {
         (Test-Path -LiteralPath (Join-Path $snapshot 'config\grid.json')) | Should Be $true
         (Test-Path -LiteralPath (Join-Path $snapshot 'config\syncconfig.json')) | Should Be $true
         (Test-Path -LiteralPath (Join-Path $snapshot 'packages\manifest.json')) | Should Be $true
+        (Test-Path -LiteralPath (Join-Path $snapshot 'agent\grid_agent\__main__.py')) | Should Be $true
+        (Test-Path -LiteralPath (Join-Path $snapshot 'agent\requirements.txt')) | Should Be $true
         $snapshotContext = New-GridContext -LauncherRoot $snapshot -Command 'status'
         Set-GridContextRoot -Context $snapshotContext -GridRoot $context.GridRoot | Out-Null
         $snapshotContext.Settings.device.name | Should Be 'SnapshotNode'

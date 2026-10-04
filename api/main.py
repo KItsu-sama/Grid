@@ -2,12 +2,14 @@
 
 import json
 import os
+import secrets
 import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+import httpx
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 
@@ -152,3 +154,33 @@ if __name__ == "__main__":
         host=os.environ.get("PERSONAL_GRID_API_HOST", "127.0.0.1"),
         port=int(os.environ.get("PERSONAL_GRID_API_PORT", "8000")),
     )
+
+
+@app.api_route("/agent-admin/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def agent_admin_proxy(path: str, request: Request) -> Response:
+    grid_root = os.environ.get("PERSONAL_GRID_ROOT")
+    if not grid_root:
+        raise HTTPException(503, "PersonalGrid root is not configured")
+    token_path = Path(grid_root) / ".grid" / "agent" / "admin.token"
+    try:
+        token = token_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        raise HTTPException(503, "Grid Agent admin API is not initialized") from None
+    if not token:
+        raise HTTPException(503, "Grid Agent admin API is not initialized")
+    if not secrets.compare_digest(request.headers.get("authorization", ""), f"Bearer {token}"):
+        raise HTTPException(401, "unauthorized")
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            upstream = await client.request(
+                request.method,
+                f"http://127.0.0.1:8765/{path}",
+                params=list(request.query_params.multi_items()),
+                content=await request.body(),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    except httpx.HTTPError:
+        raise HTTPException(503, "Grid Agent admin API is unavailable") from None
+    return Response(content=upstream.content, status_code=upstream.status_code,
+                    media_type=upstream.headers.get("content-type"))

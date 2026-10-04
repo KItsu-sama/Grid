@@ -1,6 +1,6 @@
 # Personal Grid
 
-Windows-first USB bootstrap for a persistent Personal Grid node: Tailscale for the network, Syncthing for folders, explicit pairing, honest health.
+Windows-first(for now) USB bootstrap for a persistent Personal Grid node: Tailscale for the network, Syncthing for folders, explicit pairing, honest health.
 
 Temporary USB runtime, Android onboarding, and remote command execution are **out of this release**. The optional phone-facing Grid API lives under `api\` and is not started by the bootstrap.
 
@@ -157,12 +157,40 @@ Use `audit` when troubleshooting or verifying that the Grid is actually online.
 
 ---
 
+### Grid Agent
+
+The Agent is an optional PersonalGrid subsystem. Install its Python dependencies, then run its daemon from the PersonalGrid launcher:
+
+```powershell
+python -m pip install -r .\agent\requirements.txt
+.\Grid.ps1 agent daemon run
+```
+
+The Agent reads its device ID, role, and owner from the active `.grid\device.json`. Its local admin API is loopback-only and bearer-protected; remote capability requests use the Tailscale-bound peer API. Manage devices, grants, confirmations, and audit through the PersonalGrid command surface:
+
+```powershell
+.\Grid.ps1 agent device list
+.\Grid.ps1 agent device approve <device-id> --role CLIENT
+.\Grid.ps1 agent device grant <device-id> audio.play
+.\Grid.ps1 agent audit
+```
+
+Agent startup is currently explicit; the existing `Grid.ps1 start` and `stop` lifecycle remains unchanged.
+
+---
+
 ### Syncthing Pairing
 
 Show or obtain the local Syncthing device ID using the status/setup output, then approve another device explicitly:
 
 ```powershell
 .\Grid.ps1 approve-peer -PeerId "<DEVICE_ID>" -PeerName "Laptop"
+```
+
+When the peer's Grid ID is known, record the association without granting Agent capabilities:
+
+```powershell
+.\Grid.ps1 approve-peer -PeerId "<SYNCTHING_DEVICE_ID>" -PeerName "Laptop" -GridDeviceId "<GRID_DEVICE_ID>"
 ```
 
 Example:

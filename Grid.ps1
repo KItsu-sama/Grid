@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('setup', 'start', 'stop', 'status', 'audit', 'repair', 'preflight', 'uninstall', 'approve-peer')]
+    [ValidateSet('setup', 'start', 'stop', 'status', 'audit', 'repair', 'preflight', 'uninstall', 'approve-peer', 'agent')]
     [string]$Command = 'status',
 
     [ValidateSet('persistent', 'temporary')]
@@ -20,7 +20,12 @@ param(
 
     [string]$PeerId,
 
-    [string]$PeerName
+    [string]$PeerName,
+
+    [string]$GridDeviceId,
+
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$AgentArgs
 )
 
 Set-StrictMode -Version Latest
@@ -106,7 +111,8 @@ function Invoke-GridApprovePeer {
     param(
         [Parameter(Mandatory = $true)]$Context,
         [Parameter(Mandatory = $true)][string]$PeerId,
-        [string]$PeerName
+        [string]$PeerName,
+        [string]$GridDeviceId
     )
     Assert-GridModeSupported -Context $Context
     if (-not [bool]$Context.CanBeMain) {
@@ -117,7 +123,33 @@ function Invoke-GridApprovePeer {
     }
     if ([string]::IsNullOrWhiteSpace($PeerName)) { $PeerName = 'Grid peer' }
     Start-GridSyncthing -Context $Context
-    Add-GridSyncthingPeer -Context $Context -PeerId $PeerId -PeerName $PeerName
+    Add-GridSyncthingPeer -Context $Context -PeerId $PeerId -PeerName $PeerName -GridDeviceId $GridDeviceId
+}
+
+function Invoke-GridAgentCommand {
+    param([Parameter(Mandatory = $true)]$Context, [string[]]$Arguments)
+    Assert-GridModeSupported -Context $Context
+    $agentRoot = Join-Path $script:GridBootstrapRoot 'agent'
+    if (-not (Test-Path -LiteralPath (Join-Path $agentRoot 'grid_agent\__main__.py'))) {
+        throw "Grid Agent package is missing: $agentRoot"
+    }
+    $python = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($null -eq $python) { throw 'Python is required to run the Grid Agent.' }
+
+    $oldGridRoot = $env:PERSONAL_GRID_ROOT
+    $oldStateDir = $env:GRID_STATE_DIR
+    $oldPythonPath = $env:PYTHONPATH
+    try {
+        $env:PERSONAL_GRID_ROOT = $Context.GridRoot
+        $env:GRID_STATE_DIR = Join-Path $Context.GridRoot '.grid\agent'
+        $env:PYTHONPATH = @($agentRoot, $oldPythonPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [System.IO.Path]::PathSeparator
+        & $python.Source -m grid_agent @Arguments
+        if ($LASTEXITCODE -ne 0) { throw "Grid Agent command failed with exit code $LASTEXITCODE." }
+    } finally {
+        $env:PERSONAL_GRID_ROOT = $oldGridRoot
+        $env:GRID_STATE_DIR = $oldStateDir
+        $env:PYTHONPATH = $oldPythonPath
+    }
 }
 
 function Complete-GridAuditCommand {
@@ -147,7 +179,8 @@ try {
         'repair' { Invoke-GridSetup -Context $context -Repair }
         'preflight' { Invoke-GridPreflight -Context $context | Out-Null }
         'uninstall' { Invoke-GridUninstall -Context $context -RemoveData:$RemoveData -RemoveDefaultSync:$RemoveDefaultSync }
-        'approve-peer' { Invoke-GridApprovePeer -Context $context -PeerId $PeerId -PeerName $PeerName }
+        'approve-peer' { Invoke-GridApprovePeer -Context $context -PeerId $PeerId -PeerName $PeerName -GridDeviceId $GridDeviceId }
+        'agent' { Invoke-GridAgentCommand -Context $context -Arguments $AgentArgs }
         'start'  { Invoke-GridStart -Context $context }
         'stop'   { Invoke-GridStop -Context $context }
         'status' {

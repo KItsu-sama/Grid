@@ -21,6 +21,21 @@ function New-TestConfigureContext {
 }
 
 Describe 'Syncthing configuration' {
+    It 'persists a stable Grid identity separately from the Syncthing identity' {
+        $context = New-TestConfigureContext -Name 'stable-grid-identity'
+        $first = Save-GridDeviceDocument -Context $context -DeviceId 'SYNC-ID-ONE' -IsMain $false
+
+        $second = Save-GridDeviceDocument -Context $context -DeviceId 'SYNC-ID-TWO' -IsMain $false
+
+        $first.gridDeviceId | Should Match '^[a-f0-9]{32}$'
+        $second.gridDeviceId | Should Be $first.gridDeviceId
+        $second.syncthingDeviceId | Should Be 'SYNC-ID-TWO'
+        $second.gridRole | Should Be 'CLIENT'
+
+        $main = Save-GridDeviceDocument -Context $context -DeviceId 'SYNC-ID-MAIN' -IsMain $true
+        $main.gridRole | Should Be 'MAIN'
+    }
+
     It 'uses the seed manifest folders instead of local folder IDs' {
         $context = New-TestConfigureContext -Name 'manifest-folders'
         $manifest = [pscustomobject]@{
@@ -64,11 +79,33 @@ Describe 'Syncthing configuration' {
         Mock Save-GridSyncthingConfig { $script:savedSyncthingConfig = $Config }
         Mock Write-GridLog {}
 
-        Add-GridSyncthingPeer -Context $context -PeerId $script:testPeerId -PeerName 'Laptop'
+        Add-GridSyncthingPeer -Context $context -PeerId $script:testPeerId -PeerName 'Laptop' -GridDeviceId 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
         @($script:savedSyncthingConfig.devices | Where-Object { $_.deviceID -eq $script:testPeerId }).Count | Should Be 1
         @($script:savedSyncthingConfig.folders[0].devices | Where-Object { $_.deviceID -eq $script:testPeerId }).Count | Should Be 1
         $script:savedSyncthingConfig.devices[0].autoAcceptFolders | Should Be $false
+        $savedManifest = Read-GridSyncManifest -Path $context.SyncConfigPath
+        $savedManifest.syncPeers[0].syncthingDeviceId | Should Be $script:testPeerId
+        $savedManifest.syncPeers[0].gridDeviceId | Should Be 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    }
+
+    It 'rejects a Grid device ID already mapped to another Syncthing device' {
+        $context = New-TestConfigureContext -Name 'conflicting-peer-map'
+        $context.CanBeMain = $true
+        $seedId = 'AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA'
+        $peerId = 'BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB'
+        $manifest = [pscustomobject]@{
+            schemaVersion = 1
+            seedDevice = [pscustomobject]@{ name = 'Seed'; deviceId = $seedId }
+            syncPeers = @([pscustomobject]@{ name = 'Laptop'; syncthingDeviceId = $peerId; gridDeviceId = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' })
+            folders = @([pscustomobject]@{ id = 'shared-id'; name = 'Shared'; type = 'sendreceive' })
+        }
+        Write-GridJsonAtomic -Path $context.SyncConfigPath -InputObject $manifest
+        Mock Get-GridSyncthingDeviceId { $seedId }
+        Mock Get-GridSyncthingConfig { throw 'Syncthing config should not be loaded for a conflicting mapping.' }
+
+        { Add-GridSyncthingPeer -Context $context -PeerId $peerId -PeerName 'Laptop' -GridDeviceId 'cccccccccccccccccccccccccccccccc' } |
+            Should Throw 'already associated with a different Grid device ID'
     }
 
     It 'refuses peer approval when can_be_main is false' {

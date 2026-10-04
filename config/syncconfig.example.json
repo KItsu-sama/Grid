@@ -3,8 +3,10 @@
   "gridName": "PersonalGrid",
   "seedDevice": {
     "name": "",
-    "deviceId": ""
+    "deviceId": "",
+    "gridDeviceId": ""
   },
+  "syncPeers": [],
   "folders": [
     {
       "id": "grid-inbox",

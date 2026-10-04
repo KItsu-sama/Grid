@@ -28,8 +28,20 @@ function Save-GridDeviceDocument {
     $role = [string](Get-GridProperty $Context.Settings.device 'role' 'development')
     $syncEnabled = [bool](Get-GridProperty $Context.Settings.syncthing 'enabled' $true)
     $tailscaleEmail = Get-GridTailscaleEmailFromFile -Context $Context
+    $gridDeviceId = [string](Get-GridProperty $existing 'gridDeviceId' '')
+    if ([string]::IsNullOrWhiteSpace($gridDeviceId)) {
+        $gridDeviceId = [guid]::NewGuid().ToString('N')
+    }
+    $gridRole = [string](Get-GridProperty $Context.Settings.device 'role' '').ToUpperInvariant()
+    if ($IsMain) {
+        $gridRole = 'MAIN'
+    } elseif ($gridRole -notin @('WORKER', 'CLIENT')) {
+        $gridRole = 'CLIENT'
+    }
     $doc = [pscustomobject]@{
         schemaVersion     = 1
+        gridDeviceId      = $gridDeviceId
+        gridRole          = $gridRole
         deviceName        = $Context.DeviceName
         role              = $role
         isMain            = $IsMain
@@ -122,6 +134,8 @@ function New-GridSyncManifest {
     $example = ConvertFrom-GridJson -Path (Get-GridExampleSyncConfigPath -Context $Context) -Label 'syncconfig.example.json'
     $example.seedDevice.name = $Context.DeviceName
     $example.seedDevice.deviceId = $DeviceId
+    $device = Read-GridDeviceDocument -Context $Context
+    $example.seedDevice.gridDeviceId = [string](Get-GridProperty $device 'gridDeviceId' '')
     $example.folders = @(
         foreach ($folder in Get-GridEnabledFolders -Context $Context) {
             [pscustomobject]@{
@@ -131,6 +145,7 @@ function New-GridSyncManifest {
             }
         }
     )
+    $example.syncPeers = @()
     Test-GridManifestHasSecrets -Manifest $example
     Write-GridJsonAtomic -Path $Context.SyncConfigPath -InputObject $example
     $usb = Get-GridUsbSyncConfigPath -Context $Context
@@ -167,6 +182,7 @@ function Resolve-GridSyncManifest {
             schemaVersion = 1
             gridName = 'PersonalGrid'
             seedDevice = [pscustomobject]@{ name = [string](Get-GridProperty $deviceDoc 'deviceName' 'seed'); deviceId = $savedId }
+            syncPeers = @()
             folders = @(
                 foreach ($folder in Get-GridEnabledFolders -Context $Context) {
                     [pscustomobject]@{
@@ -419,16 +435,50 @@ function Invoke-GridConfigureStage {
     }
 }
 
+function Set-GridSyncPeerAssociation {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Manifest,
+        [Parameter(Mandatory = $true)][string]$SyncthingDeviceId,
+        [Parameter(Mandatory = $true)][string]$PeerName,
+        [string]$GridDeviceId
+    )
+    $peers = @((Get-GridProperty $Manifest 'syncPeers' @()))
+    $peer = @($peers | Where-Object { [string]$_.syncthingDeviceId -eq $SyncthingDeviceId }) | Select-Object -First 1
+    if ($null -eq $peer) {
+        $peer = [pscustomobject]@{ name = $PeerName; syncthingDeviceId = $SyncthingDeviceId; gridDeviceId = $GridDeviceId }
+        $peers += $peer
+    } else {
+        $peer.name = $PeerName
+        if (-not [string]::IsNullOrWhiteSpace($GridDeviceId)) { $peer.gridDeviceId = $GridDeviceId }
+    }
+    $Manifest | Add-Member -NotePropertyName syncPeers -NotePropertyValue $peers -Force
+    Test-GridManifestHasSecrets -Manifest $Manifest
+    Write-GridJsonAtomic -Path $Context.SyncConfigPath -InputObject $Manifest
+    $usbPath = Get-GridUsbSyncConfigPath -Context $Context
+    if ([System.IO.Path]::GetFullPath($usbPath) -ne [System.IO.Path]::GetFullPath($Context.SyncConfigPath)) {
+        try {
+            Write-GridJsonAtomic -Path $usbPath -InputObject $Manifest
+        } catch {
+            Write-GridLog -Level WARN -Context $Context -Message "Sync peer association saved under GridRoot but USB manifest update failed ($usbPath)."
+        }
+    }
+}
+
 function Add-GridSyncthingPeer {
     param(
         [Parameter(Mandatory = $true)]$Context,
         [Parameter(Mandatory = $true)][string]$PeerId,
-        [Parameter(Mandatory = $true)][string]$PeerName
+        [Parameter(Mandatory = $true)][string]$PeerName,
+        [string]$GridDeviceId
     )
     if ([string]::IsNullOrWhiteSpace($PeerId) -or $PeerId -notmatch '^[A-Z2-7]{7}(-[A-Z2-7]{7}){7}$') {
         throw 'PeerId must be a complete Syncthing device ID.'
     }
     if ([string]::IsNullOrWhiteSpace($PeerName)) { throw 'PeerName cannot be empty.' }
+    if (-not [string]::IsNullOrWhiteSpace($GridDeviceId) -and $GridDeviceId -notmatch '^[a-fA-F0-9]{32}$') {
+        throw 'GridDeviceId must be a 32-character PersonalGrid device ID.'
+    }
     $manifestPath = Find-GridSyncManifestPath -Context $Context
     if ([string]::IsNullOrWhiteSpace($manifestPath)) { throw 'Cannot approve a peer because the seed syncconfig manifest is missing.' }
     $manifest = Read-GridSyncManifest -Path $manifestPath
@@ -439,6 +489,17 @@ function Add-GridSyncthingPeer {
     if ($PeerId -eq $localId) { throw "The peer device ID is this node's own ID." }
     if ([string]$manifest.seedDevice.deviceId -ne $localId) {
         throw 'Peer approval is only available on the seed device named in syncconfig.json.'
+    }
+    foreach ($mappedPeer in @((Get-GridProperty $manifest 'syncPeers' @()))) {
+        $mappedSyncId = [string](Get-GridProperty $mappedPeer 'syncthingDeviceId' '')
+        $mappedGridId = [string](Get-GridProperty $mappedPeer 'gridDeviceId' '')
+        if ($mappedSyncId -eq $PeerId -and -not [string]::IsNullOrWhiteSpace($mappedGridId) -and
+            -not [string]::IsNullOrWhiteSpace($GridDeviceId) -and $mappedGridId -ne $GridDeviceId) {
+            throw 'This Syncthing device ID is already associated with a different Grid device ID.'
+        }
+        if (-not [string]::IsNullOrWhiteSpace($GridDeviceId) -and $mappedGridId -eq $GridDeviceId -and $mappedSyncId -ne $PeerId) {
+            throw 'This Grid device ID is already associated with a different Syncthing device ID.'
+        }
     }
 
     $config = Get-GridSyncthingConfig -Context $Context
@@ -472,5 +533,6 @@ function Add-GridSyncthingPeer {
     }
     $config.folders = $folders
     Save-GridSyncthingConfig -Context $Context -Config $config
+    Set-GridSyncPeerAssociation -Context $Context -Manifest $manifest -SyncthingDeviceId $PeerId -PeerName $PeerName -GridDeviceId $GridDeviceId
     Write-GridLog -Context $Context -Message "Approved peer $PeerName ($PeerId) and shared the seed manifest folders."
 }

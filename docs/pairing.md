@@ -28,6 +28,8 @@ Before setup, set `can_be_main: true` in the trusted seed's local `config/grid.j
 	```
 
 	This adds the device and shares only the folders named in `syncconfig.json`. It does not enable blanket folder auto-accept.
+
+	When the peer's PersonalGrid ID is known, add `-GridDeviceId '<GRID_DEVICE_ID>'` to record the Syncthing-to-Grid identity association in the sync manifest. This is coordination metadata only; approve the Grid device and assign capabilities separately through the Agent admin API.
 5. The new node waits until it sees the seed connected and the shared folders begin syncing. Audit reports initial scanning/syncing as pending.
 6. Later `.\Grid.ps1 start` reuses saved configuration and does not regenerate IDs.
 

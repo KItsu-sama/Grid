@@ -15,10 +15,12 @@ Modules must not hardcode `D:\PersonalGrid`. They receive a context with `Mode`,
 <GridRoot>\
   .grid\
     device.json
+    device_registry.db
     install-state.json
     version.json
     syncconfig.json
     logs\
+      agent-audit.log
     syncthing\          # Syncthing --home (identity, config.xml, API key)
   bin\
     syncthing.exe
@@ -56,7 +58,9 @@ to `config\grid.json`. The bootstrap does not start this service.
 
 ## Identity vs authorization
 
-A Syncthing device ID identifies a node. It does not authorize a new node. Pairing is a one-time approval on the existing node. See [pairing.md](pairing.md).
+`gridDeviceId` is PersonalGrid's stable device identity. `syncthingDeviceId` identifies the node to Syncthing and is not an authorization credential. Pairing is a one-time approval on the existing node. See [pairing.md](pairing.md).
+
+The Grid Agent's signing key is separate from both the Grid device ID and Tailscale's transport identity. Agent integration must bind that key to `gridDeviceId`; it must not use Syncthing reachability or identity as authorization.
 
 ## Git
 

@@ -22,9 +22,14 @@ Endpoints:
 ```text
 GET  /health
 POST /ask  {"message":"hi"}
+GET  /agent-admin/status
+GET  /agent-admin/devices
 ```
 
 `/ask` is intentionally a stub until a local model is selected. Messages must
 contain between 1 and 8,192 characters; larger messages are rejected during
 validation, and all request bodies are limited to 16 KiB. Remote command
-execution and public API exposure are not part of this service.
+execution is not exposed. `/agent-admin/*` requires the same bearer token as the
+Agent's loopback admin API and proxies only to `127.0.0.1:8765`; remote
+capability requests still use the Tailscale-bound Agent peer API. Keep this
+service on loopback or the private tailnet, never expose it publicly.
