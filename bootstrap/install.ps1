@@ -167,6 +167,63 @@ function Repair-GridInstallationFiles {
     Protect-GridSensitivePath -Path (Join-Path $Context.GridRoot '.grid')
 }
 
+function Test-GridAgentPortListening {
+    param([Parameter(Mandatory = $true)][int]$Port)
+    $client = New-Object System.Net.Sockets.TcpClient
+    $pending = $null
+    try {
+        $pending = $client.BeginConnect('127.0.0.1', $Port, $null, $null)
+        if (-not $pending.AsyncWaitHandle.WaitOne(500)) { return $false }
+        $client.EndConnect($pending)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($null -ne $pending) { $pending.AsyncWaitHandle.Close() }
+        $client.Dispose()
+    }
+}
+
+function Stop-GridAgent {
+    param([Parameter(Mandatory = $true)]$Context)
+    $agentState = Join-Path $Context.GridRoot '.grid\agent'
+    $port = 8765
+    $configPath = Join-Path $agentState 'config.json'
+    if (Test-Path -LiteralPath $configPath -PathType Leaf) {
+        try {
+            $agentConfig = ConvertFrom-GridJson -Path $configPath -Label 'agent config.json'
+            $configuredPort = [int](Get-GridProperty $agentConfig 'local_port' $port)
+            if ($configuredPort -ge 1 -and $configuredPort -le 65535) { $port = $configuredPort }
+        } catch {
+            throw "Cannot safely stop Grid Agent because its local config is invalid: $($_.Exception.Message)"
+        }
+    }
+    if (-not (Test-GridAgentPortListening -Port $port)) { return }
+
+    $tokenPath = Join-Path $agentState 'admin.token'
+    if (-not (Test-Path -LiteralPath $tokenPath -PathType Leaf)) {
+        throw "Grid Agent is listening on port $port but its admin token is missing; refusing to remove runtime state."
+    }
+    $token = (Get-Content -LiteralPath $tokenPath -Raw -ErrorAction Stop).Trim()
+    if ([string]::IsNullOrWhiteSpace($token)) {
+        throw 'Grid Agent admin token is empty; refusing to remove runtime state.'
+    }
+    try {
+        Invoke-RestMethod -Uri "http://127.0.0.1:$port/shutdown" -Method Post `
+            -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 3 -ErrorAction Stop | Out-Null
+    } catch {
+        if (-not (Test-GridAgentPortListening -Port $port)) { return }
+        throw "Could not request a safe Grid Agent shutdown: $($_.Exception.Message)"
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (-not (Test-GridAgentPortListening -Port $port)) { return }
+        Start-Sleep -Milliseconds 200
+    }
+    throw "Grid Agent did not stop listening on port $port; refusing to remove runtime state."
+}
+
 function Uninstall-GridInstallation {
     param(
         [Parameter(Mandatory = $true)]$Context,
@@ -196,6 +253,7 @@ function Uninstall-GridInstallation {
             }
         }
     }
+    Stop-GridAgent -Context $Context
     Stop-GridSyncthing -Context $Context
     Unregister-GridSyncthingStartup
     Write-GridLog -Context $Context -Message 'Removing Personal Grid runtime state. Tailscale remains installed and signed in.'

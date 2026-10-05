@@ -24,6 +24,7 @@ type Runtime struct {
 	mu            sync.Mutex
 	nonces        map[string]time.Time
 	confirmations map[string]*Confirmation
+	shutdown      chan struct{}
 }
 
 type Confirmation struct {
@@ -91,7 +92,7 @@ func NewRuntime(config Config, deviceID string) (*Runtime, error) {
 	}
 	return &Runtime{Config: config, Identity: identity, Registry: registry, Audit: audit,
 		Adapter: NewWindowsAdapter(config.Apps, config.EnvReadable), AdminToken: token,
-		nonces: map[string]time.Time{}, confirmations: map[string]*Confirmation{}}, nil
+		nonces: map[string]time.Time{}, confirmations: map[string]*Confirmation{}, shutdown: make(chan struct{}, 1)}, nil
 }
 
 func ensureConfigDefaults(config *Config) error {

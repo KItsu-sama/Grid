@@ -22,6 +22,18 @@ func (r *Runtime) localHandler() http.Handler {
 
 func (r *Runtime) routeLocal(w http.ResponseWriter, request *http.Request) {
 	parts := splitPath(request.URL.Path)
+	if len(parts) == 1 && parts[0] == "shutdown" {
+		if request.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"detail": "method not allowed"})
+			return
+		}
+		select {
+		case r.shutdown <- struct{}{}:
+		default:
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "shutting_down": true})
+		return
+	}
 	if len(parts) == 1 && parts[0] == "status" && request.Method == http.MethodGet {
 		devices, err := r.Registry.List()
 		if err != nil {

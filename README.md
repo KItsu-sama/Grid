@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File .\Grid.ps1 setup -Seed
 | `status` / `audit` | Read-only health checks; they do not start Syncthing. Scanning/syncing folders are pending; actual failures return a nonzero exit code |
 | `repair` | Recreate missing folders/files, restart components, keep Syncthing identity |
 | `approve-peer` | On the seed, explicitly trust a supplied device ID and share only folders from the seed manifest |
-| `uninstall` | Stop Syncthing and remove Grid runtime files/startup shortcut; preserve synced files and Tailscale. `-RemoveData` deletes configured Grid folders; `-RemoveDefaultSync` separately deletes `%USERPROFILE%\Sync` |
+| `uninstall` | Authenticated shutdown of the native Agent, stop Syncthing, and remove Grid runtime files/startup shortcut; preserve synced files and Tailscale. `-RemoveData` deletes configured Grid folders; `-RemoveDefaultSync` separately deletes `%USERPROFILE%\Sync` |
 
 Optional: `-Mode persistent|temporary`, `-TargetPath D:\PersonalGrid`, `-NonInteractive`.
 

@@ -28,16 +28,33 @@ Describe 'Grid uninstall' {
     }
 
     Mock Stop-GridSyncthing {}
+    Mock Stop-GridAgent { $script:agentSawRuntimeBeforeStop = Test-Path -LiteralPath (Join-Path $script:uninstallContext.GridRoot '.grid') }
     Mock Unregister-GridSyncthingStartup {}
     Mock Write-GridLog {}
 
     It 'removes runtime files but preserves synced user data by default' {
         Uninstall-GridInstallation -Context $script:uninstallContext
+        $script:agentSawRuntimeBeforeStop | Should Be $true
         (Test-Path -LiteralPath (Join-Path $script:uninstallContext.GridRoot '.grid')) | Should Be $false
         (Test-Path -LiteralPath $script:uninstallContext.SyncthingBin) | Should Be $false
         (Test-Path -LiteralPath (Join-Path (Get-GridSyncRoot -Context $script:uninstallContext) 'user-file.txt')) | Should Be $true
         Assert-MockCalled Stop-GridSyncthing -Times 1
+        Assert-MockCalled Stop-GridAgent -Times 1
         Assert-MockCalled Unregister-GridSyncthingStartup -Times 1
+    }
+
+    It 'keeps runtime state when the native Agent cannot be stopped' {
+        $script:agentStopAttempts = 0
+        $script:unexpectedSyncthingStop = $false
+        Mock Stop-GridAgent {
+            $script:agentStopAttempts++
+            if ($script:agentStopAttempts -eq 1) { throw 'Agent is still running' }
+        }
+        Mock Stop-GridSyncthing { $script:unexpectedSyncthingStop = $true }
+
+        { Uninstall-GridInstallation -Context $script:uninstallContext } | Should Throw 'Agent is still running'
+        (Test-Path -LiteralPath (Join-Path $script:uninstallContext.GridRoot '.grid')) | Should Be $true
+        $script:unexpectedSyncthingStop | Should Be $false
     }
 
     It 'removes synced user data only when RemoveData is explicit' {
@@ -78,6 +95,42 @@ Describe 'Grid uninstall' {
         (Test-Path -LiteralPath (Join-Path $outside 'keep.txt')) | Should Be $true
         (Test-Path -LiteralPath $script:uninstallContext.DevicePath) | Should Be $true
         $script:uninstallContext.Settings.syncthing.rootFolder = 'ZinoSync'
+    }
+}
+
+Describe 'Grid Agent shutdown' {
+    BeforeEach {
+        $script:agentContext = [pscustomobject]@{ GridRoot = Join-Path $TestDrive 'agent-shutdown-grid' }
+        $agentState = Join-Path $script:agentContext.GridRoot '.grid\agent'
+        New-Item -ItemType Directory -Path $agentState -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $agentState 'admin.token') -Value 'test-token' -NoNewline
+        $script:agentPortProbeCount = 0
+        $script:agentStopRequest = $null
+    }
+
+    It 'sends the bearer-authenticated shutdown request and waits for the local API to close' {
+        Mock Test-GridAgentPortListening {
+            $script:agentPortProbeCount++
+            return ($script:agentPortProbeCount -eq 1)
+        }
+        Mock Invoke-RestMethod {
+            $script:agentStopRequest = [pscustomobject]@{ Uri = $Uri; Method = $Method; Authorization = $Headers.Authorization }
+            return @{ ok = $true; shutting_down = $true }
+        }
+
+        Stop-GridAgent -Context $script:agentContext
+
+        $script:agentStopRequest.Method | Should Be 'Post'
+        $script:agentStopRequest.Uri | Should Be 'http://127.0.0.1:8765/shutdown'
+        $script:agentStopRequest.Authorization | Should Be 'Bearer test-token'
+        Assert-MockCalled Test-GridAgentPortListening -Times 2
+    }
+
+    It 'fails shutdown when the Agent rejects the request' {
+        Mock Test-GridAgentPortListening { return $true }
+        Mock Invoke-RestMethod { throw 'unauthorized' }
+
+        { Stop-GridAgent -Context $script:agentContext } | Should Throw 'Could not request a safe Grid Agent shutdown'
     }
 }
 

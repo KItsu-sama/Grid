@@ -218,6 +218,30 @@ func TestLocalAPIRequiresBearerToken(t *testing.T) {
 	}
 }
 
+func TestLocalShutdownEndpointRequiresAuthentication(t *testing.T) {
+	runtime := testRuntime(t)
+	server := httptest.NewServer(runtime.LocalHandler())
+	defer server.Close()
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/shutdown", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+runtime.AdminToken)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("authenticated shutdown status = %d, want %d", response.StatusCode, http.StatusAccepted)
+	}
+	select {
+	case <-runtime.shutdown:
+	default:
+		t.Fatal("shutdown request did not notify daemon")
+	}
+}
+
 func signedInvoke(t *testing.T, runtime *Runtime, identity *Identity, peer *PeerIdentity, capability string,
 	args map[string]any, nonce, confirmationID string) InvokeResult {
 	t.Helper()

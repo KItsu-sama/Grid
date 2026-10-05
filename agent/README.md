@@ -16,7 +16,7 @@ This runs `go test ./...` and writes `bin\grid-agent.exe`. `Grid.ps1 agent ...` 
 
 The native daemon reads the authoritative device ID, name, role, and owner from `.grid\device.json`, stores its Ed25519 signing identity under `.grid\agent`, reuses the existing SQLite registry at `.grid\device_registry.db`, and writes the hash-chained audit log at `.grid\logs\agent-audit.log`.
 
-The admin API binds to `127.0.0.1` and requires the bearer token in `.grid\agent\admin.token`. When Tailscale is running under the configured owner, the peer API binds only to the assigned Tailscale IPv4 address. Peer requests require Tailscale identity, an approved registry entry, a valid Ed25519 signature, a fresh timestamp and nonce, role/grant authorization, typed arguments, and target-side confirmation for sensitive operations.
+The admin API binds to `127.0.0.1` and requires the bearer token in `.grid\agent\admin.token`. Its authenticated `POST /shutdown` route gracefully stops the daemon; `Grid.ps1 uninstall` uses it and refuses to remove state if the Agent does not stop. When Tailscale is running under the configured owner, the peer API binds only to the assigned Tailscale IPv4 address. Peer requests require Tailscale identity, an approved registry entry, a valid Ed25519 signature, a fresh timestamp and nonce, role/grant authorization, typed arguments, and target-side confirmation for sensitive operations.
 
 Optional local adapter settings can be placed in `.grid\agent\config.json` using `apps` (application ID to executable path), `env_readable` (environment variable names), `local_port`, and `peer_port`. This file cannot override the authoritative device identity, role, name, or owner from `.grid\device.json`.
 
