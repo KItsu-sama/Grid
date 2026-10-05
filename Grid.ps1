@@ -130,25 +130,21 @@ function Invoke-GridAgentCommand {
     param([Parameter(Mandatory = $true)]$Context, [string[]]$Arguments)
     Assert-GridModeSupported -Context $Context
     $agentRoot = Join-Path $script:GridBootstrapRoot 'agent'
-    if (-not (Test-Path -LiteralPath (Join-Path $agentRoot 'grid_agent\__main__.py'))) {
-        throw "Grid Agent package is missing: $agentRoot"
+    $nativeAgent = Join-Path $agentRoot 'bin\grid-agent.exe'
+    if (-not (Test-Path -LiteralPath $nativeAgent -PathType Leaf)) {
+        throw "Native Grid Agent executable is missing: $nativeAgent. Build it with agent\build.ps1."
     }
-    $python = Get-Command python.exe -ErrorAction SilentlyContinue
-    if ($null -eq $python) { throw 'Python is required to run the Grid Agent.' }
 
     $oldGridRoot = $env:PERSONAL_GRID_ROOT
     $oldStateDir = $env:GRID_STATE_DIR
-    $oldPythonPath = $env:PYTHONPATH
     try {
         $env:PERSONAL_GRID_ROOT = $Context.GridRoot
         $env:GRID_STATE_DIR = Join-Path $Context.GridRoot '.grid\agent'
-        $env:PYTHONPATH = @($agentRoot, $oldPythonPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [System.IO.Path]::PathSeparator
-        & $python.Source -m grid_agent @Arguments
+        & $nativeAgent @Arguments
         if ($LASTEXITCODE -ne 0) { throw "Grid Agent command failed with exit code $LASTEXITCODE." }
     } finally {
         $env:PERSONAL_GRID_ROOT = $oldGridRoot
         $env:GRID_STATE_DIR = $oldStateDir
-        $env:PYTHONPATH = $oldPythonPath
     }
 }
 

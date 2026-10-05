@@ -80,11 +80,11 @@ function Copy-GridBootstrapSnapshot {
     Initialize-GridDirectory -Path (Join-Path $dest 'packages')
     Initialize-GridDirectory -Path (Join-Path $dest 'agent')
     Copy-Item -LiteralPath (Join-Path $Context.BootstrapRoot 'Grid.ps1') -Destination (Join-Path $dest 'Grid.ps1') -Force
-    foreach ($agentItem in @('grid_agent', 'requirements.txt', 'pyproject.toml')) {
-        $agentSource = Join-Path (Join-Path $Context.BootstrapRoot 'agent') $agentItem
-        if (Test-Path -LiteralPath $agentSource) {
-            Copy-Item -LiteralPath $agentSource -Destination (Join-Path (Join-Path $dest 'agent') $agentItem) -Recurse -Force
-        }
+    $nativeAgent = Join-Path $Context.BootstrapRoot 'agent\bin\grid-agent.exe'
+    if (Test-Path -LiteralPath $nativeAgent -PathType Leaf) {
+        $snapshotAgentBin = Join-Path $dest 'agent\bin'
+        Initialize-GridDirectory -Path $snapshotAgentBin
+        Copy-Item -LiteralPath $nativeAgent -Destination (Join-Path $snapshotAgentBin 'grid-agent.exe') -Force
     }
     Get-ChildItem -LiteralPath (Join-Path $Context.BootstrapRoot 'bootstrap') -Filter '*.ps1' | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination (Join-Path (Join-Path $dest 'bootstrap') $_.Name) -Force

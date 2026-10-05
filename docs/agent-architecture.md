@@ -1,6 +1,6 @@
 # PersonalGrid Agent subsystem: architecture and status (v0.1)
 
-The Agent is a subsystem of PersonalGrid, not a separate product or trust authority. PersonalGrid's `.grid/device.json` owns the stable `gridDeviceId`; the Agent's local signing key is bound to that ID and remains separate from Tailscale and Syncthing identities.
+The Agent is a subsystem of PersonalGrid, not a separate product or trust authority. PersonalGrid's `.grid/device.json` owns the stable `gridDeviceId`; the Agent's local signing key is bound to that ID and remains separate from Tailscale and Syncthing identities. The supported runtime is the native Go executable; running it requires no Python installation.
 
 The Agent device registry and role/grant authorization live in PersonalGrid's `.grid` state and govern remote capability access. The PowerShell launcher is the product CLI entry point; its Agent subcommand uses the authenticated local admin API. The PersonalGrid API proxies `/agent-admin/*` through the same bearer token to that loopback API. Remote capability requests remain on the Tailscale-bound peer API. Syncthing pairing remains a separate sync-layer approval. The sync manifest can record an explicit Syncthing-ID-to-Grid-ID association, but that metadata does not approve Agent access.
 
@@ -29,18 +29,16 @@ A request is accepted only if **all** hold: the transport proves the caller (`ta
 | Layer | Module |
 |---|---|
 | Transport | `transport/base.py`, `transport/tailscale.py` |
-| Control plane / registry | `registry.py` (SQLite: devices, state, role, keys, grants) |
-| Authentication | `identity.py`, `Agent._authenticate` |
-| Authorization | `authz.py` (role baseline, explicit allow/deny, sensitive set) |
-| Connection mgmt / health | `monitor.py` (online/offline, latency, relay vs direct) |
-| Capabilities | `capabilities.py` (typed catalogue; no shell capability exists) |
-| Agent | `agent.py` (authenticate, authorize, validate, confirm, execute, audit) |
-| Files / transfer | `fs.py` (FileSystem + Grid roots), `files.py`, `transfer/` |
-| Sync | `sync.py` (snapshot + three-way diff) |
-| Audit | `audit.py` (append-only, hash-chained, bodies redacted) |
-| Local API | `api.py` `create_local_app` (127.0.0.1, bearer token) |
-| Peer API | `api.py` `create_peer_app` (tailnet address only: `/v1/hello`, `/v1/invoke`, `/v1/rotate`) |
-| CLI | `cli.py` |
+| Control plane / registry | `internal/agent/registry.go` (SQLite devices, roles, keys, grants) |
+| Authentication | `internal/agent/identity.go`, `runtime.go` (Ed25519 and replay checks) |
+| Authorization | `internal/agent/policy.go` (role baseline, explicit allow/deny, sensitive set) |
+| Capabilities | `internal/agent/policy.go` (typed catalogue; no shell capability) |
+| Windows adapter | `internal/agent/adapter.go` (fixed-argument process and power operations) |
+| Agent | `internal/agent/runtime.go` (authenticate, authorize, validate, confirm, execute, audit) |
+| Audit | `internal/agent/audit.go` (append-only hash chain, redacted bodies) |
+| Local API | `internal/agent/local_api.go` (127.0.0.1, bearer token) |
+| Peer API | `internal/agent/peer_api.go` (Tailscale-bound `/v1/hello`, `/v1/invoke`, `/v1/rotate`) |
+| CLI and daemon | `cmd/grid-agent/`, `internal/agent/cli.go`, `daemon.go` |
 
 Approve, revoke, grants and confirmations exist **only** on the local admin API. A remote device can never approve itself or confirm its own request.
 
@@ -61,22 +59,19 @@ The launcher supplies the resolved Grid root and the Agent derives local identit
 
 ```
 .\Grid.ps1 agent daemon run
-.\Grid.ps1 agent network status | diagnose | rotate-key [--wireguard]
+.\Grid.ps1 agent network status
 .\Grid.ps1 agent device list | approve <id|name> --role MAIN|WORKER|CLIENT | revoke <id|name> | grant <id|name> <pattern> [--deny]
-.\Grid.ps1 agent peer list | connect <id|name> | disconnect <id|name>
 .\Grid.ps1 agent confirm list | approve <id> | deny <id>
 .\Grid.ps1 agent audit [--limit N]
 ```
 
-`rotate-key` rotates the **Grid identity key** (new key announced to peers, accepted only if signed by the old key). `--wireguard` additionally forces a fresh Tailscale node key (interactive IdP login). Because Grid binds to Tailscale's *stable* node ID, node-key rotation never breaks Grid identity.
-
-`peer disconnect` suspends a peer (requests refused) without revoking it; `connect` pings and un-suspends. `revoke` is permanent for that identity and clears its grants; no other device is touched. For a network-level cut-off also remove the node in the Tailscale admin console.
+The native CLI currently supports status, device approval/revocation/grants, local confirmation, and audit operations. Peer health controls, diagnostics, and initiating identity-key rotation have not been ported. Revocation is permanent for that identity and clears its grants.
 
 ## Roles and capabilities
 
-Baselines (a ceiling for defaults, not a free pass): MAIN gets files/transfer/media/audio/app.launch/process.read/device.info/environment.read; WORKER gets files list/stat/read/write/mkdir + transfer; CLIENT gets files list/stat/read + transfer/media/audio. Everything else, including `power.*`, `process.stop`, `environment.modify`, `services.manage`, `system.settings`, needs an explicit allow grant **and** a one-time confirmation approved locally at the target (bound to the exact arguments, 120 s, single use). Deny always wins.
+The authorization policy retains the existing role baselines: MAIN gets files/transfer/media/audio/app.launch/process.read/device.info/environment.read; WORKER gets files list/stat/read/write/mkdir + transfer; CLIENT gets files list/stat/read + transfer/media/audio. The native Windows adapter currently implements only device.info, process.read, process.stop, power.sleep, power.shutdown, environment.read, and allowlisted app.launch; it advertises no other capabilities. Unsupported capabilities remain unavailable even with a grant. Sensitive implemented capabilities require an explicit allow grant **and** a one-time confirmation approved locally at the target (bound to the exact arguments, 120 s, single use). Deny always wins.
 
-Example "phone -> PC": `Grid.ps1 agent device grant phone files.*`, `audio.play`, or `app.launch`; deny sensitive classes with `Grid.ps1 agent device grant phone "power.*" --deny`.
+Example "phone -> PC": allow `app.launch` only when an application allowlist is configured; sensitive actions such as `power.sleep` require a grant and local confirmation.
 
 ## Files and transfer
 
@@ -89,9 +84,9 @@ Example "phone -> PC": `Grid.ps1 agent device grant phone files.*`, `audio.play`
 
 ## Honest status: what is NOT done
 
-* **Windows adapter behavior is not fully integration-tested.** Subprocess capabilities are unit-tested through an injected runner; `pycaw` volume code depends on the pycaw version; `audio.play` uses the default player.
+* **Native capability coverage is intentionally limited.** File/transfer, media/audio, peer health monitoring, diagnostics, and initiating identity-key rotation remain in the legacy Python implementation and are not available through the native launcher yet.
 * **Android:** only the contract (`AndroidAdapter` + bridge). The real work is a Kotlin app (AudioManager, Intents, Storage Access Framework `FileSystem` implementation) speaking the same `/v1/invoke` envelope. Not started.
-* **Not implemented:** filesystem watching, media.stream (use `files.read` range calls for now; an HTTP range endpoint is the next step), wiring `sync` to actions, `environment.modify`, `services.manage`, `system.settings`, Windows service wrapper (run `Grid.ps1 agent daemon run` manually for now; `Grid.ps1 start` lifecycle integration is deferred).
+* **Not implemented:** filesystem watching, media.stream, file/transfer capabilities, wiring `sync` to actions, `environment.modify`, `services.manage`, `system.settings`, peer health controls, local identity-key rotation, and a Windows service wrapper (`Grid.ps1 start` lifecycle integration is deferred).
 * **Transport details:** the peer API is plain HTTP inside the WireGuard tunnel (confidential on the wire via WireGuard; Grid signatures give request authenticity, not extra encryption). Chunks are base64 in JSON (~33% overhead); a binary endpoint is a later optimisation. No rate limiting on the peer API yet.
 * **Tailscale JSON field names** (`StableID`, `Peer`, `UserProfile`...) were written from memory of the CLI output and tested against fixtures I wrote, not a live tailnet. Run `tailscale status --json` and `tailscale whois --json <ip>` once and compare.
 * Identity key is stored in a user-only file; on Windows wrapping it with DPAPI is a TODO.
@@ -100,8 +95,8 @@ Example "phone -> PC": `Grid.ps1 agent device grant phone files.*`, `audio.play`
 
 ```
 cd agent
-pip install -r requirements.txt pytest
-python -m pytest -q        # 61 passed in the current test suite; one platform-dependent skip
+go test ./...
+go build -trimpath -ldflags "-s -w" -o .\bin\grid-agent.exe .\cmd\grid-agent
 ```
 
-to be pair this part is currently useless since the device need python to run any of this
+The native Go runtime replaces Python for the Agent daemon and its local/peer APIs. The separate optional PersonalGrid API service under `api/` remains Python-based.

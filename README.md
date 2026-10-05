@@ -159,10 +159,10 @@ Use `audit` when troubleshooting or verifying that the Grid is actually online.
 
 ### Grid Agent
 
-The Agent is an optional PersonalGrid subsystem. Install its Python dependencies, then run its daemon from the PersonalGrid launcher:
+The Agent is an optional native PersonalGrid subsystem. Build it once with Go 1.26+; running it has no Python or Go runtime dependency:
 
 ```powershell
-python -m pip install -r .\agent\requirements.txt
+.\agent\build.ps1
 .\Grid.ps1 agent daemon run
 ```
 
@@ -171,7 +171,7 @@ The Agent reads its device ID, role, and owner from the active `.grid\device.jso
 ```powershell
 .\Grid.ps1 agent device list
 .\Grid.ps1 agent device approve <device-id> --role CLIENT
-.\Grid.ps1 agent device grant <device-id> audio.play
+.\Grid.ps1 agent device grant <device-id> app.launch
 .\Grid.ps1 agent audit
 ```
 
