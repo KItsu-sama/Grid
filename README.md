@@ -64,7 +64,7 @@ Install and run the optional FastAPI service with:
 
 ```powershell
 python -m pip install -r .\api\requirements.txt
-$env:PERSONAL_GRID_ROOT = 'D:\PersonalGrid'
+$env:PERSONAL_GRID_ROOT = '.\PersonalGrid'
 $env:PERSONAL_GRID_API_HOST = '0.0.0.0'
 python .\api\main.py
 ```
@@ -121,7 +121,7 @@ Install Grid as a normal node:
 Persistent installation with a specific location:
 
 ```powershell
-.\Grid.ps1 setup -Mode persistent -TargetPath "D:\PersonalGrid"
+.\Grid.ps1 setup -Mode persistent -TargetPath "...\...\PersonalGrid"
 ```
 
 Temporary mode:

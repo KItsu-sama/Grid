@@ -35,17 +35,46 @@ function Test-GridPreflightPackage {
         [Parameter(Mandatory = $true)]$Context,
         [Parameter(Mandatory = $true)][string]$Id
     )
+
     try {
         $spec = Find-GridPackageSpec -Context $Context -Id $Id
         $path = Resolve-GridPackageFile -Context $Context -Spec $spec
-        if ([string]::IsNullOrWhiteSpace($path)) {
-            $cache = if ([string]::IsNullOrWhiteSpace($Context.GridRoot)) { '<GridRoot>' } else { Join-Path $Context.GridRoot 'packages' }
-            return (New-GridPreflightCheck -Name "$Id installer" -Status blocker -Reason "Missing $($spec.file). Place the verified vendor installer in packages\ or $cache.")
+
+        if (-not [string]::IsNullOrWhiteSpace($path)) {
+            Test-GridPackageHash -Path $path -Spec $spec
+
+            return (New-GridPreflightCheck `
+                -Name "$Id installer" `
+                -Status ready `
+                -Reason "Found and SHA-256 verified: $path")
         }
-        Test-GridPackageHash -Path $path -Spec $spec
-        return (New-GridPreflightCheck -Name "$Id installer" -Status ready -Reason "Found and SHA-256 verified: $path")
-    } catch {
-        return (New-GridPreflightCheck -Name "$Id installer" -Status blocker -Reason $_.Exception.Message)
+
+        $online = [bool](Get-GridProperty $spec 'online' $true)
+        $url = [string](Get-GridProperty $spec 'url')
+
+        if ($online -and -not [string]::IsNullOrWhiteSpace($url)) {
+            return (New-GridPreflightCheck `
+                -Name "$Id installer" `
+                -Status action `
+                -Reason "Not cached locally. Setup will download the verified vendor package automatically and cache it under $($Context.GridRoot)\packages.")
+        }
+
+        $cache = if ([string]::IsNullOrWhiteSpace($Context.GridRoot)) {
+            '<GridRoot>'
+        } else {
+            Join-Path $Context.GridRoot 'packages'
+        }
+
+        return (New-GridPreflightCheck `
+            -Name "$Id installer" `
+            -Status blocker `
+            -Reason "Missing $($spec.file). Place the verified vendor installer in packages\ or $cache.")
+    }
+    catch {
+        return (New-GridPreflightCheck `
+            -Name "$Id installer" `
+            -Status blocker `
+            -Reason $_.Exception.Message)
     }
 }
 

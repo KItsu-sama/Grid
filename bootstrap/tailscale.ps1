@@ -74,18 +74,87 @@ Replace REPLACE_ME with the file hash, then rerun setup. Unverified installers a
     }
 }
 
-function Copy-GridVerifiedPackage {
+function Invoke-GridPackageDownload {
     param(
         [Parameter(Mandatory = $true)]$Context,
-        [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)]$Spec
     )
-    if ([string]::IsNullOrWhiteSpace($Context.GridRoot)) { return }
+
+    if ([string]::IsNullOrWhiteSpace([string]$Spec.url)) {
+        throw @"
+No online download URL is configured for package '$($Spec.id)'.
+
+Expected file: $($Spec.file)
+Place the verified vendor package in:
+  $($Context.BootstrapRoot)\packages
+or:
+  $($Context.GridRoot)\packages
+"@
+    }
+
+    $url = [string]$Spec.url
+
+    if (-not $url.StartsWith('https://', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to download package '$($Spec.id)': package URL must use HTTPS."
+    }
+
+    if ([string]::IsNullOrWhiteSpace([string]$Context.GridRoot)) {
+        throw "Cannot download package '$($Spec.id)': GridRoot has not been resolved."
+    }
+
     $cache = Join-Path $Context.GridRoot 'packages'
     Initialize-GridDirectory -Path $cache
-    $dest = Join-Path $cache $Spec.file
-    if ($Path.ToLowerInvariant() -ne $dest.ToLowerInvariant()) {
-        Copy-Item -LiteralPath $Path -Destination $dest -Force
+
+    $destination = Join-Path $cache ([string]$Spec.file)
+    $temporary = "$destination.download"
+
+    Write-GridLog -Context $Context -Message "Package '$($Spec.id)' is missing locally. Downloading from $url"
+
+    try {
+        # Windows PowerShell 5.1 may otherwise negotiate an older TLS version.
+        $previousProtocol = [Net.ServicePointManager]::SecurityProtocol
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+        try {
+            if (Test-Path -LiteralPath $temporary) {
+                Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+            }
+
+            Invoke-WebRequest `
+                -Uri $url `
+                -OutFile $temporary `
+                -UseBasicParsing `
+                -ErrorAction Stop
+        }
+        finally {
+            [Net.ServicePointManager]::SecurityProtocol = $previousProtocol
+        }
+
+        if (-not (Test-Path -LiteralPath $temporary)) {
+            throw "The download completed without producing a file: $temporary"
+        }
+
+        $downloadedSize = (Get-Item -LiteralPath $temporary).Length
+        if ($downloadedSize -le 0) {
+            throw "The downloaded package is empty: $temporary"
+        }
+
+        Write-GridLog -Context $Context -Message "Downloaded $($Spec.file) ($downloadedSize bytes). Verifying SHA-256."
+
+        Test-GridPackageHash -Path $temporary -Spec $Spec
+
+        Move-Item -LiteralPath $temporary -Destination $destination -Force
+
+        Write-GridLog -Context $Context -Message "Verified and cached package '$($Spec.id)' at $destination"
+
+        return $destination
+    }
+    catch {
+        if (Test-Path -LiteralPath $temporary) {
+            Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        }
+
+        throw "Online download failed for package '$($Spec.id)': $($_.Exception.Message)"
     }
 }
 
@@ -94,21 +163,48 @@ function Get-GridVerifiedPackagePath {
         [Parameter(Mandatory = $true)]$Context,
         [Parameter(Mandatory = $true)][string]$Id
     )
+
     $spec = Find-GridPackageSpec -Context $Context -Id $Id
+
+    # 1. Prefer an existing package.
     $path = Resolve-GridPackageFile -Context $Context -Spec $spec
+
+    # 2. If it does not exist, automatically download it.
     if ([string]::IsNullOrWhiteSpace($path)) {
-        throw @"
-Missing offline package for '$Id'.
+        if (-not [bool](Get-GridProperty $spec 'online' $true)) {
+            throw @"
+Package '$Id' is not installed and online download is disabled.
 
 Expected file: $($spec.file)
-Looked in: $($Context.BootstrapRoot)\packages and $($Context.GridRoot)\packages
+Looked in:
+  $($Context.BootstrapRoot)\packages
+  $($Context.GridRoot)\packages
 
-Copy the vendor file onto the USB, set its SHA-256 in packages\manifest.json, and rerun. Setup will not download it automatically.
+Copy the verified vendor package into one of those locations and rerun setup.
 "@
+        }
+
+        $path = Invoke-GridPackageDownload -Context $Context -Spec $spec
     }
+
+    # 3. ALWAYS verify the package before it is executed or extracted.
     Test-GridPackageHash -Path $path -Spec $spec
+
+    # 4. Keep the verified package in the persistent Grid cache.
     Copy-GridVerifiedPackage -Context $Context -Path $path -Spec $spec
-    return [pscustomobject]@{ Path = $path; Spec = $spec }
+
+    # Resolve again because Copy-GridVerifiedPackage may have placed it
+    # into the persistent package cache.
+    $cached = Resolve-GridPackageFile -Context $Context -Spec $spec
+
+    if ([string]::IsNullOrWhiteSpace($cached)) {
+        $cached = $path
+    }
+
+    return [pscustomobject]@{
+        Path = $cached
+        Spec = $spec
+    }
 }
 
 function Get-GridTailscaleAddress {

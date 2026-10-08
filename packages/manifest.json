@@ -1,23 +1,29 @@
 {
-  "schemaVersion": 1,
-  "notes": "The bootstrap validates the SHA-256 before it runs or extracts a package.",
+  "schemaVersion": 0.2,
+  "notes": "Packages may be supplied offline in packages/ or downloaded automatically from the pinned HTTPS vendor URL. SHA-256 is always verified before installation or extraction.",
   "packages": [
     {
       "id": "syncthing",
-      "version": "SyncTrayzorPortable-x64",
+      "name": "SyncTrayzor",
+      "version": "2.2.0",
       "arch": "amd64",
       "file": "SyncTrayzorPortable-x64.zip",
+      "url": "https://github.com/GermanCoding/SyncTrayzor/releases/download/v2.2.0/SyncTrayzorPortable-x64.zip",
       "sha256": "2ed9cc53ac83c287e069f8dcfa3ac801daf7d2ac76c93457021f712ff6785662",
       "kind": "portable-zip",
-      "binaryName": "syncthing.exe"
+      "binaryName": "syncthing.exe",
+      "online": true
     },
     {
       "id": "tailscale",
+      "name": "Tailscale",
       "version": "1.102.4",
       "arch": "amd64",
       "file": "tailscale-setup-1.102.4-amd64.msi",
+      "url": "https://dl.tailscale.com/stable/tailscale-setup-1.102.4-amd64.msi",
       "sha256": "80eb007e39dfebe17299fa1a09c79a8e1d934f76e0246c0817ebe3af675b7ef6",
-      "kind": "msi"
+      "kind": "msi",
+      "online": true
     }
   ]
 }
