@@ -13,6 +13,19 @@ Copy this repository onto a USB stick. Add vendor packages under `packages\` and
 Run `.\Grid.ps1 preflight -Seed` for a first node, or `.\Grid.ps1 preflight` for an additional node. The single [setup inputs guide](docs/setup-inputs.md) maps configuration files, package files, optional metadata, and the information needed for Tailscale sign-in and pairing.
 Set `can_be_main: true` only in the trusted main device's local `config/grid.json`; the example defaults to false.
 
+If PowerShell blocks the script because script execution is disabled, allow it for this PowerShell process only, then run the command:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\Grid.ps1 preflight -Seed
+```
+
+This does not change the machine-wide execution policy. Alternatively, run a single command in a separate PowerShell process:
+
+```powershell 
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Grid.ps1 preflight -Seed
+```
+
 ## Commands
 
 ```powershell
@@ -63,7 +76,7 @@ It exposes `/health` and the Phase 5 stub `/ask`. Keep the host at
 
 Persistent GridRoot is chosen with AUTO (fixed local disk, most free bytes above the configured minimum) unless `targetPath` / `-TargetPath` is set. Removable and network drives are excluded.
 
-Syncthing GUI binds to `127.0.0.1` only. Identity lives in `<GridRoot>\.grid\syncthing` and is never written into the seed manifest.
+Tailscale app files are installed under `<GridRoot>\bin\tailscale`; its Windows service and state remain system-managed. Syncthing's executable is under `<GridRoot>\bin`, its GUI binds to `127.0.0.1` only, and its identity lives in `<GridRoot>\.grid\syncthing` and is never written into the seed manifest.
 
 ## Tests
 
@@ -329,4 +342,3 @@ Then run:
 | `repair`                | Repair an existing installation                 |
 | `uninstall`             | Remove Grid                                     |
 | `uninstall -RemoveData` | Remove Grid and its runtime data                |
-

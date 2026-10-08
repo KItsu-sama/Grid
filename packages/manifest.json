@@ -15,9 +15,9 @@
       "id": "tailscale",
       "version": "1.102.4",
       "arch": "amd64",
-      "file": "tailscale-setup-1.102.4.exe",
-      "sha256": "dc874bb9db4a93e1e412f44ed629ec4b432ae24c7322f9d51d445b15a852a9e5",
-      "kind": "installer"
+      "file": "tailscale-setup-1.102.4-amd64.msi",
+      "sha256": "80eb007e39dfebe17299fa1a09c79a8e1d934f76e0246c0817ebe3af675b7ef6",
+      "kind": "msi"
     }
   ]
 }

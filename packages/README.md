@@ -11,12 +11,12 @@ Place vendor-signed installers here, then put the matching SHA-256 in `manifest.
 | ID | Architecture | Version | File name | SHA-256 |
 | --- | --- | --- | --- | --- |
 | syncthing | amd64 | SyncTrayzor Portable x64 | `SyncTrayzorPortable-x64.zip` | `2ed9cc53ac83c287e069f8dcfa3ac801daf7d2ac76c93457021f712ff6785662` |
-| tailscale | amd64 | 1.102.4 | `tailscale-setup-1.102.4.exe` | `dc874bb9db4a93e1e412f44ed629ec4b432ae24c7322f9d51d445b15a852a9e5` |
+| tailscale | amd64 | 1.102.4 | `tailscale-setup-1.102.4-amd64.msi` | `80eb007e39dfebe17299fa1a09c79a8e1d934f76e0246c0817ebe3af675b7ef6` |
 
 ## Sources (manual download, then copy onto the USB)
 
 - SyncTrayzor: official portable x64 Windows zip for the Syncthing UI bundle. The archive is verified before extraction; the bootstrap supports portable archives and preserves the Grid root abstraction.
-- Tailscale: official Windows installer for the pinned version. Setup starts the existing Windows service if Tailscale is already installed and does not log the user out.
+- Tailscale: [official Windows MSI for the pinned version](https://pkgs.tailscale.com/stable/tailscale-setup-1.102.4-amd64.msi). Setup sets `INSTALLDIR` to `<GridRoot>\bin\tailscale`; its Windows service and state remain system-managed. Setup starts an existing Windows service if Tailscale is already installed and does not log the user out.
 
 ## Cache order
 

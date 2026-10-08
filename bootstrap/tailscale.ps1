@@ -169,16 +169,24 @@ function Invoke-GridTailscaleLogin {
 
 function Install-GridTailscalePackage {
     param([Parameter(Mandatory = $true)]$Context)
+    if ([string]::IsNullOrWhiteSpace([string]$Context.TailscaleInstallDir)) {
+        throw 'Tailscale install directory is not resolved under GridRoot.'
+    }
     $pkg = Get-GridVerifiedPackagePath -Context $Context -Id 'tailscale'
     Write-GridLog -Context $Context -Message "Installing verified Tailscale package $($pkg.Spec.file)"
 
     $kind = [string]$pkg.Spec.kind
-    $file = $pkg.Path
-    $args = @('/quiet')
-    if ($pkg.Path.EndsWith('.msi', [System.StringComparison]::OrdinalIgnoreCase) -or $kind -eq 'msi') {
-        $file = 'msiexec.exe'
-        $args = @('/i', $pkg.Path, '/qn')
+    if (-not $pkg.Path.EndsWith('.msi', [System.StringComparison]::OrdinalIgnoreCase) -and $kind -ne 'msi') {
+        throw "Tailscale package '$($pkg.Spec.file)' must be an MSI so setup can install its app files under GridRoot."
     }
+    Initialize-GridDirectory -Path $Context.TailscaleInstallDir
+    $file = 'msiexec.exe'
+    $args = @(
+        '/i',
+        ('"{0}"' -f $pkg.Path),
+        '/qn',
+        ('INSTALLDIR="{0}"' -f $Context.TailscaleInstallDir)
+    )
 
     $p = Start-Process -FilePath $file -ArgumentList $args -Wait -PassThru
     if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {

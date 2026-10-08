@@ -216,6 +216,7 @@ function New-GridContext {
         SyncConfigPath   = $null
         SyncthingHome    = $null
         SyncthingBin     = $null
+        TailscaleInstallDir = $null
         LogPath          = $null
         DeviceName       = $deviceName
         TemporaryRuntime = Join-Path $bootstrapRoot 'PersonalGrid\runtime'
@@ -239,6 +240,7 @@ function Set-GridContextRoot {
     $Context.SyncConfigPath = Join-Path $dot 'syncconfig.json'
     $Context.SyncthingHome = Join-Path $dot 'syncthing'
     $Context.SyncthingBin = Join-Path $root 'bin\syncthing.exe'
+    $Context.TailscaleInstallDir = Join-Path $root 'bin\tailscale'
     $Context.LogPath = Join-Path $dot 'logs\grid.log'
     return $Context
 }
