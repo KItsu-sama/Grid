@@ -38,10 +38,24 @@ Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'bootstrap') -Filter '*.ps1'
 
 function Initialize-GridCommandContext {
     Assert-GridWindowsHost
-    $ctx = New-GridContext -LauncherRoot $script:GridBootstrapRoot -Command $Command -Mode $Mode -TargetPath $TargetPath -Seed:$Seed -NonInteractive:$NonInteractive
+
+    $ctx = New-GridContext `
+        -LauncherRoot $script:GridBootstrapRoot `
+        -Command $Command `
+        -Mode $Mode `
+        -TargetPath $TargetPath `
+        -Seed:$Seed `
+        -NonInteractive:$NonInteractive
+
+    $ctx | Add-Member -MemberType NoteProperty `
+        -Name SeedRequested `
+        -Value ([bool]$Seed) `
+        -Force
+
     if ($Command -eq 'preflight') {
         return (Initialize-GridPreflightContext -Context $ctx)
     }
+
     $envInfo = Get-GridEnvironment -Context $ctx
     return (Resolve-GridRuntime -Context $ctx -Environment $envInfo)
 }

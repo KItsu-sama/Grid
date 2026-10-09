@@ -1,9 +1,10 @@
-# Personal Grid
+# Personal Grid (unfinish)
 
 Windows-first(for now) USB bootstrap for a persistent Personal Grid node: Tailscale for the network, Syncthing for folders, explicit pairing, honest health.
 
 Temporary USB runtime, Android onboarding, and remote command execution are **out of this release**. The optional phone-facing Grid API lives under `api\` and is not started by the bootstrap.
 
+note: that doc might not be all well updated in this place
 ## USB layout
 
 Copy this repository onto a USB stick. Add vendor packages under `packages\` and pin SHA-256 values in `packages\manifest.json` (see [packages/README.md](packages/README.md)). Do not commit `config\grid.json`, `config\syncconfig.json`, or `tailscale.txt`.

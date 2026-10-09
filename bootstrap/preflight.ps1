@@ -147,7 +147,7 @@ function Get-GridPreflightReport {
             if (Test-Path -LiteralPath $usbManifest) { $manifestPath = $usbManifest }
         }
         if ([string]::IsNullOrWhiteSpace($manifestPath)) {
-            $checks.Add((New-GridPreflightCheck -Name 'Pairing data' -Status blocker -Reason 'No seed config/syncconfig.json found. Copy it from the seed node, or run preflight and setup with -Seed for the first node.')) | Out-Null
+            $checks.Add((New-GridPreflightCheck -Name 'Pairing data' -Status blocker -Reason 'No seed config/syncconfig.json found. For the first node, run preflight -Seed and then setup -Seed. For a joining device, obtain the pairing config from the seed node and rerun preflight.')) | Out-Null
         } else {
             try {
                 $manifest = Read-GridSyncManifest -Path $manifestPath
