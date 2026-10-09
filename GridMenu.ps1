@@ -56,16 +56,20 @@ function Invoke-GridCommand {
         Write-Host 'Mode: seed' -ForegroundColor Cyan
     }
 
-    # Keep normal output and errors visible in the menu.
-    & powershell.exe @childArgs
+    # Capture both native output streams so the child's error details are relayed
+    # consistently before the menu's failure summary.
+    $childOutput = @(& powershell.exe @childArgs 2>&1)
     $code = $LASTEXITCODE
+    foreach ($line in $childOutput) {
+        Write-Host $line
+    }
 
     if ($code -ne 0) {
         Write-Host ''
         Write-Host '========== COMMAND FAILED ==========' -ForegroundColor Red
         Write-Host "Command: $Name" -ForegroundColor Yellow
         Write-Host "Exit code: $code" -ForegroundColor Red
-        Write-Host 'The error should appear above this message i hope.' -ForegroundColor Yellow
+        Write-Host 'See the diagnostic output above for the error details and line number.' -ForegroundColor Yellow
         Write-Host '====================================' -ForegroundColor Red
     } else {
         Write-Host "Command '$Name' completed successfully." -ForegroundColor Green
@@ -110,18 +114,19 @@ function Invoke-GridSetupOrPreflight {
     }
 
     if ($RequestedMode -eq '0' -or $RequestedMode -eq 'cancel') {
-        return
+        return 0
     }
 
     switch ($RequestedMode) {
         'seed' {
-            Invoke-GridCommand -Name $Name -Seed | Out-Null
+            return (Invoke-GridCommand -Name $Name -Seed)
         }
         'join' {
-            Invoke-GridCommand -Name $Name | Out-Null
+            return (Invoke-GridCommand -Name $Name)
         }
         default {
             Write-Host "Unknown mode '$RequestedMode'. Use seed or join." -ForegroundColor Red
+            return 2
         }
     }
 }
@@ -145,13 +150,13 @@ function Show-GridMenu {
 
         switch ($choice) {
             '1' {
-                Invoke-GridSetupOrPreflight -Name 'setup'
+                Invoke-GridSetupOrPreflight -Name 'setup' | Out-Null
             }
             '2' {
                 Invoke-GridCommand -Name 'uninstall' | Out-Null
             }
             '3' {
-                Invoke-GridSetupOrPreflight -Name 'preflight'
+                Invoke-GridSetupOrPreflight -Name 'preflight' | Out-Null
             }
             '4' {
                 Invoke-GridCommand -Name 'status' | Out-Null
@@ -216,8 +221,8 @@ if ($Arguments.Count -gt 0) {
             exit 2
         }
 
-        Invoke-GridSetupOrPreflight -Name $name -RequestedMode $mode
-        exit 0
+        $code = Invoke-GridSetupOrPreflight -Name $name -RequestedMode $mode
+        exit $code
     }
 
     if ($name -in @('status', 'audit', 'start', 'stop', 'repair', 'uninstall')) {
@@ -226,8 +231,8 @@ if ($Arguments.Count -gt 0) {
             $extra = @($Arguments | Select-Object -Skip 1)
         }
 
-        Invoke-GridCommand -Name $name -ExtraArgs $extra | Out-Null
-        exit $LASTEXITCODE
+        $code = Invoke-GridCommand -Name $name -ExtraArgs $extra
+        exit $code
     }
 
     if ($name -in @('0', 'exit', 'menu')) {
