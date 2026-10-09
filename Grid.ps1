@@ -30,6 +30,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$VerbosePreference = 'Continue'
 
 $script:GridBootstrapRoot = $PSScriptRoot
 Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'bootstrap') -Filter '*.ps1' | Sort-Object Name | ForEach-Object {

@@ -22,6 +22,7 @@ if (-not (Test-Path -LiteralPath $GridScript -PathType Leaf)) {
     exit 1
 }
 
+
 function Invoke-GridCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -44,15 +45,30 @@ function Invoke-GridCommand {
         $childArgs += '-Seed'
     }
 
+    $ExtraArgs = @($ExtraArgs)
     if ($ExtraArgs.Count -gt 0) {
         $childArgs += $ExtraArgs
     }
 
+    Write-Host ''
+    Write-Host "Running Grid command: $Name" -ForegroundColor Cyan
+    if ($Seed) {
+        Write-Host 'Mode: seed' -ForegroundColor Cyan
+    }
+
+    # Keep normal output and errors visible in the menu.
     & powershell.exe @childArgs
     $code = $LASTEXITCODE
 
     if ($code -ne 0) {
-        Write-Host "Grid command '$Name' failed with exit code $code." -ForegroundColor Red
+        Write-Host ''
+        Write-Host '========== COMMAND FAILED ==========' -ForegroundColor Red
+        Write-Host "Command: $Name" -ForegroundColor Yellow
+        Write-Host "Exit code: $code" -ForegroundColor Red
+        Write-Host 'The error should appear above this message i hope.' -ForegroundColor Yellow
+        Write-Host '====================================' -ForegroundColor Red
+    } else {
+        Write-Host "Command '$Name' completed successfully." -ForegroundColor Green
     }
 
     return $code
