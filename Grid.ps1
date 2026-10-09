@@ -205,7 +205,35 @@ try {
             $audit
         }
     }
+
 } catch {
-    Write-GridLog -Level ERROR -Message $_.Exception.Message
+    $err = $_
+
+    Write-Host ''
+    Write-Host '========== GRID ERROR ==========' -ForegroundColor Red
+    Write-Host $err.Exception.Message -ForegroundColor Red
+
+    if ($err.InvocationInfo -and $err.InvocationInfo.ScriptName) {
+        Write-Host "File: $($err.InvocationInfo.ScriptName)" -ForegroundColor Yellow
+        Write-Host "Line: $($err.InvocationInfo.ScriptLineNumber)" -ForegroundColor Yellow
+        Write-Host "Code: $($err.InvocationInfo.Line.Trim())" -ForegroundColor DarkYellow
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($err.ScriptStackTrace)) {
+        Write-Host ''
+        Write-Host 'Stack trace:' -ForegroundColor Yellow
+        Write-Host $err.ScriptStackTrace
+    }
+
+    try {
+        Write-GridLog -Level ERROR -Message (
+            "$($err.Exception.Message)`n$($err.ScriptStackTrace)"
+        )
+    } catch {
+        Write-Host "Could not write to the Grid log: $($_.Exception.Message)" `
+            -ForegroundColor DarkYellow
+    }
+
+    Write-Host '================================' -ForegroundColor Red
     exit 1
 }

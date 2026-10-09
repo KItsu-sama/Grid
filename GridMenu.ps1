@@ -1,8 +1,16 @@
-
 param(
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
-    [string[]]$Arguments
+    [string[]]$Arguments = @()
 )
+
+if ($null -eq $Arguments) {
+    $Arguments = @()
+}
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# Normalize empty, single-item, and multi-item argument lists.
+$Arguments = @($Arguments)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -104,17 +112,18 @@ function Invoke-GridSetupOrPreflight {
 
 function Show-GridMenu {
     while ($true) {
+
         Write-Host ''
-        Write-Host '========== Personal Grid =========='
-        Write-Host '1. Setup Grid'
-        Write-Host '2. Uninstall Grid'
-        Write-Host '3. Preflight checks'
-        Write-Host '4. Status / audit'
-        Write-Host '5. Open PowerShell here'
-        Write-Host '6. Open elevated PowerShell here'
-        Write-Host '7. Help'
-        Write-Host '0. Exit'
-        Write-Host '==================================='
+        Write-Host '========== Personal Grid ==========' -ForegroundColor Cyan
+        Write-Host '1. Setup Grid' -ForegroundColor Green
+        Write-Host '2. Uninstall Grid' -ForegroundColor Red
+        Write-Host '3. Preflight checks' -ForegroundColor Yellow
+        Write-Host '4. Status / audit' -ForegroundColor Cyan
+        Write-Host '5. Open PowerShell here' -ForegroundColor Gray
+        Write-Host '6. Open elevated PowerShell here' -ForegroundColor Gray
+        Write-Host '7. Help' -ForegroundColor Magenta
+        Write-Host '0. Exit' -ForegroundColor DarkGray
+        Write-Host '===================================' -ForegroundColor Cyan
 
         $choice = (Read-Host 'Select an option').Trim().ToLowerInvariant()
 
