@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('setup', 'start', 'stop', 'status', 'audit', 'repair', 'preflight', 'uninstall', 'approve-peer', 'agent')]
+    [ValidateSet('setup', 'start', 'stop', 'status', 'audit', 'repair', 'preflight', 'uninstall', 'approve-peer', 'agent', 'trust')]
     [string]$Command = 'status',
 
     [ValidateSet('persistent', 'temporary')]
@@ -64,8 +64,25 @@ function Initialize-GridCommandContext {
 function Invoke-GridSetup {
     param($Context, [switch]$Repair)
     Assert-GridModeSupported -Context $Context
-    if (($Context.SeedRequested -or [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)) -and -not [bool]$Context.CanBeMain) {
-        throw 'This device is not authorized to become the Grid main. Set can_be_main=true only on the trusted main device.'
+    if (($Context.SeedRequested -or
+        [bool](Get-GridProperty $Context.Settings.device 'isMain' $false)) -and
+        -not [bool]$Context.CanBeMain) {
+
+        if ($Context.NonInteractive) {
+            throw 'Main permission is missing. Run .\Grid.ps1 trust allow-main in elevated PowerShell, then retry setup.'
+        }
+
+        Write-Host 'Seed setup requires permission to become the Grid main.' -ForegroundColor Yellow
+        $authorize = Read-Host 'Authorize this device now? (yes/no)'
+
+        if ($authorize.Trim().ToLowerInvariant() -ne 'yes') {
+            throw 'Seed setup cancelled. No installation was started.'
+        }
+
+        $authorized = Set-GridMainPermission -Context $Context -Allow $true
+        if (-not $authorized -or -not [bool]$Context.CanBeMain) {
+            throw 'Main permission was not granted. Setup cancelled.'
+        }
     }
     $state = Read-GridInstallState -Context $Context
     Invoke-GridStage -Context $Context -State $state -Name 'prepare' -Force:$Repair -Action {
@@ -204,6 +221,9 @@ try {
             $audit = Invoke-GridAudit -Context $context
             Complete-GridAuditCommand -Audit $audit
             $audit
+        }
+        'trust' {
+            Invoke-GridTrust -Context $context -Arguments $AgentArgs
         }
     }
 
