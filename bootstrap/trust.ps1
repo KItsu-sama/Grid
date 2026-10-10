@@ -1,4 +1,3 @@
-```powershell
 # bootstrap/trust.ps1
 # Manage local permission to become the Grid main node.
 
@@ -102,4 +101,3 @@ function Invoke-GridTrust {
         }
     }
 }
-```
