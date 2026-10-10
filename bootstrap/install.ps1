@@ -228,6 +228,7 @@ function Uninstall-GridInstallation {
     param(
         [Parameter(Mandatory = $true)]$Context,
         [switch]$RemoveData,
+        [switch]$RemoveApplications,
         [switch]$RemoveDefaultSync
     )
     $syncRoot = $null
@@ -256,7 +257,19 @@ function Uninstall-GridInstallation {
     Stop-GridAgent -Context $Context
     Stop-GridSyncthing -Context $Context
     Unregister-GridSyncthingStartup
-    Write-GridLog -Context $Context -Message 'Removing Personal Grid runtime state. Tailscale remains installed and signed in.'
+
+    if ($RemoveApplications) {
+        Uninstall-GridOwnedTailscale -Context $Context
+    }
+
+    Write-GridLog -Context $Context -Message (
+        'Removing Personal Grid runtime state. ' +
+        $(if ($RemoveApplications) {
+            'Grid-owned applications were processed according to ownership checks.'
+        } else {
+            'Standalone applications and Tailscale are preserved.'
+        })
+    )
     if (Test-Path -LiteralPath (Join-Path $Context.GridRoot '.grid')) {
         Remove-Item -LiteralPath (Join-Path $Context.GridRoot '.grid') -Recurse -Force
     }
@@ -275,4 +288,123 @@ function Uninstall-GridInstallation {
     if ($RemoveDefaultSync -and (Test-Path -LiteralPath $defaultSyncRoot)) {
         Remove-Item -LiteralPath $defaultSyncRoot -Recurse -Force
     }
+}
+
+function Uninstall-GridOwnedTailscale {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $ownedRoot = [System.IO.Path]::GetFullPath(
+        $Context.TailscaleInstallDir
+    ).TrimEnd('\')
+
+    $registryRoots = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+
+    $ownedProducts = @()
+
+    foreach ($root in $registryRoots) {
+        if (-not (Test-Path -LiteralPath $root)) {
+            continue
+        }
+
+        foreach ($key in Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue) {
+            $app = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
+            if ($null -eq $app) { continue }
+
+            if ([string]$app.DisplayName -notmatch '^Tailscale(?:\s|$)') {
+                continue
+            }
+
+            $candidatePaths = @()
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$app.InstallLocation)) {
+                $candidatePaths += [string]$app.InstallLocation
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$app.DisplayIcon)) {
+                $iconPath = [string]$app.DisplayIcon
+                if ($iconPath -match '^"([^"]+)"') {
+                    $iconPath = $Matches[1]
+                } else {
+                    $iconPath = $iconPath -replace ',\d+$', ''
+                }
+
+                if (-not [string]::IsNullOrWhiteSpace($iconPath)) {
+                    $candidatePaths += $iconPath
+                }
+            }
+
+            $isGridOwned = $false
+
+            foreach ($candidate in $candidatePaths) {
+                try {
+                    $fullPath = [System.IO.Path]::GetFullPath(
+                        $candidate.Trim().Trim('"')
+                    ).TrimEnd('\')
+
+                    if (
+                        $fullPath.Equals(
+                            $ownedRoot,
+                            [System.StringComparison]::OrdinalIgnoreCase
+                        ) -or
+                        $fullPath.StartsWith(
+                            $ownedRoot + '\',
+                            [System.StringComparison]::OrdinalIgnoreCase
+                        )
+                    ) {
+                        $isGridOwned = $true
+                        break
+                    }
+                } catch {
+                    # An invalid registry path is not proof of Grid ownership.
+                }
+            }
+
+            if ($isGridOwned) {
+                $ownedProducts += [pscustomobject]@{
+                    DisplayName = [string]$app.DisplayName
+                    RegistryKey = [string]$key.PSChildName
+                    UninstallString = [string]$app.UninstallString
+                }
+            }
+        }
+    }
+
+    if ($ownedProducts.Count -eq 0) {
+        Write-GridLog -Level WARN -Context $Context -Message (
+            "No registered Tailscale installation could be verified under $ownedRoot. " +
+            'Tailscale was preserved to avoid uninstalling a separately managed installation.'
+        )
+        return
+    }
+
+    if ($ownedProducts.Count -ne 1) {
+        throw "Found $($ownedProducts.Count) matching Tailscale uninstall entries. Refusing ambiguous application removal."
+    }
+
+    $product = $ownedProducts[0]
+
+    if ($product.RegistryKey -notmatch '^\{[0-9A-Fa-f-]{36}\}$') {
+        throw "The Grid-owned Tailscale entry has no recognizable MSI product code: $($product.RegistryKey). Refusing automatic removal."
+    }
+
+    Write-GridLog -Context $Context -Message (
+        "Uninstalling verified Grid-owned application: $($product.DisplayName)"
+    )
+
+    $process = Start-Process `
+        -FilePath 'msiexec.exe' `
+        -ArgumentList @('/x', $product.RegistryKey, '/qn', '/norestart') `
+        -Wait `
+        -PassThru
+
+    if ($process.ExitCode -notin @(0, 3010)) {
+        throw "Tailscale uninstaller failed with exit code $($process.ExitCode)."
+    }
+
+    Write-GridLog -Context $Context -Message (
+        "Tailscale uninstall completed with exit code $($process.ExitCode)."
+    )
 }

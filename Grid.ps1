@@ -24,6 +24,8 @@ param(
 
     [string]$GridDeviceId,
 
+    [switch]$RemoveApplications,
+
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$AgentArgs
 )
@@ -133,10 +135,33 @@ function Invoke-GridUninstall {
     param(
         [Parameter(Mandatory = $true)]$Context,
         [switch]$RemoveData,
-        [switch]$RemoveDefaultSync
+        [switch]$RemoveDefaultSync,
+        [switch]$RemoveApplications
     )
+
     Assert-GridModeSupported -Context $Context
-    Uninstall-GridInstallation -Context $Context -RemoveData:$RemoveData -RemoveDefaultSync:$RemoveDefaultSync
+
+    if ($RemoveApplications) {
+        if ($Context.NonInteractive) {
+            throw 'Application removal requires interactive confirmation. Rerun uninstall without -NonInteractive.'
+        }
+
+        Write-Host ''
+        Write-Host 'WARNING: Full uninstall may disconnect this device from your Grid network.' -ForegroundColor Yellow
+        Write-Host 'Grid will only uninstall Tailscale if its installation location can be verified.' -ForegroundColor Yellow
+        Write-Host 'Personal files and standalone applications will not be removed automatically.' -ForegroundColor Yellow
+
+        $confirmation = Read-Host 'Type REMOVE APPS to continue'
+        if ($confirmation -cne 'REMOVE APPS') {
+            throw 'Full uninstall cancelled. No applications were intentionally uninstalled.'
+        }
+    }
+
+    Uninstall-GridInstallation `
+        -Context $Context `
+        -RemoveData:$RemoveData `
+        -RemoveDefaultSync:$RemoveDefaultSync `
+        -RemoveApplications:$RemoveApplications
 }
 
 function Invoke-GridApprovePeer {
@@ -206,7 +231,13 @@ try {
         'setup'  { Invoke-GridSetup -Context $context }
         'repair' { Invoke-GridSetup -Context $context -Repair }
         'preflight' { Invoke-GridPreflight -Context $context | Out-Null }
-        'uninstall' { Invoke-GridUninstall -Context $context -RemoveData:$RemoveData -RemoveDefaultSync:$RemoveDefaultSync }
+        'uninstall' {
+    Invoke-GridUninstall `
+        -Context $context `
+        -RemoveData:$RemoveData `
+        -RemoveDefaultSync:$RemoveDefaultSync `
+        -RemoveApplications:$RemoveApplications
+}
         'approve-peer' { Invoke-GridApprovePeer -Context $context -PeerId $PeerId -PeerName $PeerName -GridDeviceId $GridDeviceId }
         'agent' { Invoke-GridAgentCommand -Context $context -Arguments $AgentArgs }
         'start'  { Invoke-GridStart -Context $context }

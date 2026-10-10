@@ -153,7 +153,30 @@ function Show-GridMenu {
                 Invoke-GridSetupOrPreflight -Name 'setup' | Out-Null
             }
             '2' {
-                Invoke-GridCommand -Name 'uninstall' | Out-Null
+                Write-Host ''
+                Write-Host 'Choose uninstall scope:' -ForegroundColor Cyan
+                Write-Host '  grid - Remove Grid runtime and configuration'
+                Write-Host '  full - Also uninstall verified Grid-owned applications'
+                Write-Host '  0    - Cancel'
+
+                $scope = (Read-Host 'Uninstall scope').Trim().ToLowerInvariant()
+
+                switch ($scope) {
+                    'grid' {
+                        Invoke-GridCommand -Name 'uninstall' | Out-Null
+                    }
+                    'full' {
+                        Invoke-GridCommand -Name 'uninstall' -ExtraArgs @(
+                            '-RemoveApplications'
+                        ) | Out-Null
+                    }
+                    '0' {
+                        Write-Host 'Uninstall cancelled.' -ForegroundColor Yellow
+                    }
+                    default {
+                        Write-Host 'Invalid choice. Nothing was uninstalled.' -ForegroundColor Yellow
+                    }
+                }
             }
             '3' {
                 Invoke-GridSetupOrPreflight -Name 'preflight' | Out-Null
